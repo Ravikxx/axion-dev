@@ -214,7 +214,17 @@ The web UI shares the same agent session as the CLI.
 
 ## MCP Servers
 
-Connect any Model Context Protocol server:
+Axion includes a built-in MCP marketplace with 13 curated servers:
+
+```
+/mcp browse               # see all available servers
+/mcp search database      # filter by keyword
+/mcp install github       # install by ID
+/mcp install puppeteer
+/mcp install postgres postgresql://user:pass@localhost/db
+```
+
+Or connect any MCP server manually:
 
 ```
 /mcp add github npx -y @modelcontextprotocol/server-github
@@ -223,6 +233,8 @@ Connect any Model Context Protocol server:
 ```
 
 Config is saved to `~/.axion/mcp.json`.
+
+Available marketplace IDs: `github`, `filesystem`, `fetch`, `postgres`, `sqlite`, `notion`, `slack`, `puppeteer`, `memory`, `brave-search`, `google-maps`, `sequential-thinking`, `everything`
 
 ---
 
