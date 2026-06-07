@@ -76,6 +76,7 @@ Or set them live inside the CLI:
 
 | Alias | Provider | Notes |
 |---|---|---|
+| `veil` | Axion Labs | No key required — start here |
 | `claude` | Anthropic | claude-sonnet-4-6 |
 | `claude-opus` | Anthropic | claude-opus-4-8 |
 | `claude-haiku` | Anthropic | claude-haiku-4-5 |
@@ -85,22 +86,31 @@ Or set them live inside the CLI:
 | `gemini-2.5-pro` | Google | gemini-2.5-pro |
 | `groq` | Groq | llama-3.3-70b |
 | `mistral` | Mistral | mistral-large |
-| `veil` | Axion Labs | No key required |
 | `ollama` | Local | Requires Ollama running |
 
 Switch models anytime:
 
 ```
+/model veil
+/model claude
 /model gpt
 /model gemini-2.5-pro
 /model ollama
 ```
 
-Add a custom OpenAI-compatible endpoint:
+### OpenAI-compatible endpoints (OpenRouter, LM Studio, etc.)
+
+Any OpenAI-compatible API works — including OpenRouter, LM Studio, Together AI, and self-hosted models:
 
 ```
-/endpoint my-model https://my-api.com/v1 my-model-id sk-...
+/endpoint openrouter https://openrouter.ai/api/v1 meta-llama/llama-3.3-70b-instruct sk-or-...
+/endpoint lmstudio   http://localhost:1234/v1       lmstudio-community/meta-llama-3-8b
+/endpoint together   https://api.together.xyz/v1    mistralai/Mixtral-8x7B-Instruct-v0.1 sk-...
 ```
+
+Format: `/endpoint <alias> <base-url> <model-id> [api-key]`
+
+Custom endpoints are saved and show up in `/models`.
 
 ---
 
