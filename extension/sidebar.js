@@ -744,8 +744,24 @@ function showScreenshotThumbnail(wrap, dataUrl) {
 }
 
 function renderMarkdown(text) {
+  // Extract code blocks and links before escaping so their content is preserved
+  const codeBlocks = [];
+  text = text.replace(/```[\w]*\n?([\s\S]*?)```/g, (_, c) => {
+    codeBlocks.push(c.trim());
+    return `\x00CODE${codeBlocks.length - 1}\x00`;
+  });
+  const links = [];
+  text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, (_, label, url) => {
+    links.push({ label, url });
+    return `\x00LINK${links.length - 1}\x00`;
+  });
+  // Also linkify bare URLs
+  text = text.replace(/(?<!\x00LINK\d)(https?:\/\/[^\s<>"']+)/g, (url) => {
+    links.push({ label: url, url });
+    return `\x00LINK${links.length - 1}\x00`;
+  });
+
   let h = esc(text);
-  h = h.replace(/```[\w]*\n?([\s\S]*?)```/g, (_,c) => `<pre><code>${c.trim()}</code></pre>`);
   h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
   h = h.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   h = h.replace(/\*(.+?)\*/g, '<em>$1</em>');
@@ -756,7 +772,13 @@ function renderMarkdown(text) {
   h = h.replace(/^[*-] (.+)$/gm, '<li>$1</li>');
   h = h.replace(/(<li>[\s\S]*?<\/li>\n?)+/g, m => `<ul>${m}</ul>`);
   h = h.replace(/\n/g, '<br>');
-  h = h.replace(/<pre><code>([\s\S]*?)<\/code><\/pre>/g, (_,c) => `<pre><code>${c.replace(/<br>/g,'\n')}</code></pre>`);
+
+  // Restore code blocks and links
+  h = h.replace(/\x00CODE(\d+)\x00/g, (_, i) => `<pre><code>${esc(codeBlocks[+i])}</code></pre>`);
+  h = h.replace(/\x00LINK(\d+)\x00/g, (_, i) => {
+    const { label, url } = links[+i];
+    return `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(label)}</a>`;
+  });
   return h;
 }
 
