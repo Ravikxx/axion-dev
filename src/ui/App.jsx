@@ -181,7 +181,8 @@ const CWD = shortCwd();
 function modeLabel(mode) { return mode === 'auto' ? 'bypass' : mode; }
 
 function WelcomeBanner({ model, mode }) {
-  const modeColor = MODE_COLORS[mode] || 'cyan';
+  const modeColor  = MODE_COLORS[mode] || 'cyan';
+  const isFirstRun = model === 'veil' && !getMemories().length;
   return (
     <Box flexDirection="column" marginBottom={1} borderStyle="round" borderColor="gray" paddingX={2} paddingY={0}>
       <Box gap={4}>
@@ -206,12 +207,26 @@ function WelcomeBanner({ model, mode }) {
 
         {/* Right column */}
         <Box flexDirection="column">
-          <Text color="yellowBright" bold>Getting started</Text>
-          <Text color="gray">  /help for all commands</Text>
-          <Text color="gray">  /model · /mode · /api to configure</Text>
-          <Text color="gray">  /thinking to enable extended reasoning</Text>
-          <Text color="gray">  /goal to run until a condition is met</Text>
-          <Text color="gray">  .axionrc in your project for per-project defaults</Text>
+          {isFirstRun ? (
+            <>
+              <Text color="yellowBright" bold>Welcome to Axion!</Text>
+              <Text color="gray">  You're on <Text color="cyan">Veil</Text> — no API key needed, start chatting now.</Text>
+              <Text color="gray">  To use Claude/GPT/Gemini: <Text color="white">/api claude sk-ant-...</Text></Text>
+              <Text color="gray">  Switch models anytime:    <Text color="white">/model claude</Text></Text>
+              <Text color="gray">  Browse MCP integrations:  <Text color="white">/mcp browse</Text></Text>
+              <Text color="gray">  Connect GitHub/Google:    <Text color="white">/oauth connect github</Text></Text>
+              <Text color="gray">  See everything:           <Text color="white">/help</Text></Text>
+            </>
+          ) : (
+            <>
+              <Text color="yellowBright" bold>Quick reference</Text>
+              <Text color="gray">  /help for all commands</Text>
+              <Text color="gray">  /model · /mode · /api to configure</Text>
+              <Text color="gray">  /mcp browse · /mcp install &lt;id&gt;</Text>
+              <Text color="gray">  /thinking to enable extended reasoning</Text>
+              <Text color="gray">  /goal to run until a condition is met</Text>
+            </>
+          )}
         </Box>
       </Box>
     </Box>

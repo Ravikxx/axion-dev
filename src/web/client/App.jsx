@@ -79,6 +79,28 @@ function DiffView({ diff }) {
 
 function ToolBlock({ id, name, input, output, success, pending, diff }) {
   const [open, setOpen] = useState(false);
+  const isThinking = name && name.includes('sequentialthinking');
+
+  if (isThinking) {
+    const num     = input?.thoughtNumber || '?';
+    const total   = input?.totalThoughts || '?';
+    const thought = input?.thought || '';
+    const badge   = input?.isRevision ? ` · revising #${input.revisesThought}` : input?.branchId ? ` · branch ${input.branchId}` : '';
+    return (
+      <div className="tool-block" style={{ borderColor: '#7c3aed22', background: '#7c3aed08' }}>
+        <div className="tool-header" style={{ color: '#9f7aea' }}>
+          <span style={{ marginRight: 6 }}>{pending ? '◌' : '💭'}</span>
+          <span className="tool-name" style={{ color: '#9f7aea' }}>Thought {num}/{total}{badge}</span>
+          {thought && <span style={{ color: '#555', fontSize: 10, marginLeft: 'auto' }} onClick={() => setOpen(v => !v)}>{open ? '▲' : '▼'}</span>}
+        </div>
+        {thought && (
+          <div className="tool-output" style={{ color: '#888', fontStyle: 'italic', display: open ? undefined : '-webkit-box', WebkitLineClamp: open ? undefined : 2, WebkitBoxOrient: open ? undefined : 'vertical', overflow: open ? undefined : 'hidden' }}>
+            {thought}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   const statusClass = pending ? 'spin' : success ? 'ok' : 'err';
   const statusIcon  = pending ? '…' : success ? '✔' : '✖';

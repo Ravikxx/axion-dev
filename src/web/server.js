@@ -274,10 +274,13 @@ function createSharedSession(defaultModel, defaultMode) {
   // ── Run agent ───────────────────────────────────────────────────────────────
 
   async function runAgent(message) {
-    const askConfirm = (tc) => new Promise((resolve) => {
-      confirmResolver = resolve;
-      broadcast({ type: 'confirm_request', kind: 'tool', tool: { name: tc.name, label: confirmLabel(tc.name, tc.input) } });
-    });
+    const askConfirm = (tc) => {
+      if (tc.name && tc.name.includes('sequentialthinking')) return Promise.resolve(true);
+      return new Promise((resolve) => {
+        confirmResolver = resolve;
+        broadcast({ type: 'confirm_request', kind: 'tool', tool: { name: tc.name, label: confirmLabel(tc.name, tc.input) } });
+      });
+    };
     const askPlanConfirm = () => new Promise((resolve) => {
       confirmResolver = resolve;
       broadcast({ type: 'confirm_request', kind: 'plan' });
