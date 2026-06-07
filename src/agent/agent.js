@@ -252,6 +252,9 @@ IMPORTANT RULES:
     if (this._thinkReminder && !this.thinking.enabled) {
       prompt += `\n\nIMPORTANT: The user has asked you to think or reason. You MUST use <think>...</think> tags to show your reasoning before responding. Write your thoughts as plain text inside the tags — do not call any tools inside a <think> block.`;
     }
+    if (MCP.getStatus().some(s => s.name === 'sequential-thinking' && s.ready)) {
+      prompt += `\n\nSEQUENTIAL THINKING ENABLED: You have access to the sequentialthinking tool. You MUST use it automatically before answering any non-trivial question or task — do not wait to be asked. Use it to plan your approach, reason through tradeoffs, and catch mistakes before responding. Only skip it for completely trivial one-line answers.`;
+    }
     return prompt;
   }
 
