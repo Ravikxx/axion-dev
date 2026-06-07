@@ -192,7 +192,7 @@ AXION_GOOGLE_CLIENT_SECRET=...
 4. Select the `extension/` folder from this repo
 5. Click the Axion icon or press `Alt+Shift+A`
 
-The extension sidebar lets you ask about the current page, run browser automation, take screenshots, and chat using any supported model — no API key required if using Veil.
+The extension sidebar lets you ask about the current page, run browser automation, take screenshots, and chat using any supported model — no API key required if using Veil. Links in AI responses are clickable and open in a new tab.
 
 ---
 
