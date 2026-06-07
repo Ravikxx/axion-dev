@@ -124,6 +124,11 @@ function createSharedSession(defaultModel, defaultMode) {
   let tokens          = { total: 0, input: 0, output: 0 };
   let displayMessages = [];
 
+  let currentChatName = null;
+  let chatAutoNamed   = false;
+  let messageQueue    = [];
+  let cancelFn        = null;
+
   const MAX_GOAL_ITERS = 25;
   const THINKING_WORDS = ['baking','brewing','conjuring','weaving','crafting',
                           'simmering','forging','hatching','distilling','wrangling',
@@ -207,6 +212,12 @@ function createSharedSession(defaultModel, defaultMode) {
       let msg;
       try { msg = JSON.parse(raw.toString()); } catch { return; }
 
+      // Cancel current generation
+      if (msg.type === 'cancel') {
+        if (cancelFn) cancelFn(new Error('cancelled'));
+        return;
+      }
+
       // Hello handshake — client identifies itself and gets full history
       if (msg.type === 'hello') {
         ws._clientType = msg.clientType || 'web';
@@ -215,8 +226,15 @@ function createSharedSession(defaultModel, defaultMode) {
           model, mode,
           cwd: process.cwd(),
           history: displayMessages,
+          chats: listChats(),
         });
         broadcastStatus();
+        return;
+      }
+
+      // Chat list refresh
+      if (msg.type === 'list_chats') {
+        sendTo(ws, { type: 'chats_list', chats: listChats() });
         return;
       }
 
@@ -234,37 +252,20 @@ function createSharedSession(defaultModel, defaultMode) {
         const input = (msg.content || '').trim();
         if (!input) return;
 
-        if (thinking) {
-          sendTo(ws, { type: 'message', msg: { type: 'info', content: `Axion is still ${pickWord()}… try /btw for a side question.` } });
-          return;
-        }
-
         if (input.startsWith('/')) {
           await handleCommand(input, ws);
           return;
         }
 
-        // Normal chat — tag with source so all clients can show where it came from
-        lastUserMsg = input;
-        const clientType = ws._clientType || 'web';
-        const userMsg = { type: 'user', content: input, source: clientType };
-        displayMessages.push(userMsg);
-        broadcast({ type: 'message', msg: userMsg });
-        broadcast({ type: 'thinking_start', word: pickWord() });
-        thinking = true;
-
-        try {
-          await runAgent(input);
-        } catch (err) {
-          const errMsg = { type: 'error', content: err.message };
-          displayMessages.push(errMsg);
-          broadcast({ type: 'message', msg: errMsg });
-        } finally {
-          thinking = false;
-          confirmResolver = null;
-          broadcast({ type: 'thinking_end' });
-          broadcastStatus();
+        if (thinking) {
+          messageQueue.push({ input, clientType: ws._clientType || 'web' });
+          const count = messageQueue.length;
+          broadcast({ type: 'queue_update', count });
+          sendTo(ws, { type: 'message', msg: { type: 'info', content: `⏱ Queued (${count}): "${input.slice(0, 60)}${input.length > 60 ? '…' : ''}"` } });
+          return;
         }
+
+        await processMessage(input, ws._clientType || 'web');
       }
     });
 
@@ -310,6 +311,64 @@ function createSharedSession(defaultModel, defaultMode) {
     }
   }
 
+  // ── Process a user message (handles cancel, queue drain, auto-save) ───────────
+
+  async function processMessage(input, clientType) {
+    lastUserMsg = input;
+    const userMsg = { type: 'user', content: input, source: clientType };
+    displayMessages.push(userMsg);
+    broadcast({ type: 'message', msg: userMsg });
+    broadcast({ type: 'thinking_start', word: pickWord() });
+    thinking = true;
+
+    const cancelPromise = new Promise((_, rej) => { cancelFn = rej; });
+    try {
+      await Promise.race([runAgent(input), cancelPromise]);
+    } catch (err) {
+      if (err.message === 'cancelled') {
+        const cm = { type: 'info', content: '⊘ Stopped.' };
+        displayMessages.push(cm); broadcast({ type: 'message', msg: cm });
+      } else {
+        const em = { type: 'error', content: err.message };
+        displayMessages.push(em); broadcast({ type: 'message', msg: em });
+      }
+    } finally {
+      cancelFn = null;
+      thinking = false;
+      confirmResolver = null;
+      broadcast({ type: 'thinking_end' });
+      broadcastStatus();
+      autoSaveChat();
+      if (messageQueue.length > 0) {
+        const next = messageQueue.shift();
+        broadcast({ type: 'queue_update', count: messageQueue.length });
+        await processMessage(next.input, next.clientType);
+      } else {
+        broadcast({ type: 'queue_update', count: 0 });
+      }
+    }
+  }
+
+  // ── Auto-save chat with title derived from first user message ────────────────
+
+  function autoSaveChat() {
+    const firstUser = displayMessages.find(m => m.type === 'user');
+    if (!firstUser) return;
+    if (!chatAutoNamed) {
+      const raw = firstUser.content.trim().replace(/\n+/g, ' ').replace(/[^\w\s]/g, '').trim();
+      const words = raw.split(/\s+/).slice(0, 5).join(' ');
+      const safe = (words.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').slice(0, 40) || `chat-${Date.now()}`);
+      currentChatName = safe;
+      chatAutoNamed = true;
+    }
+    if (currentChatName) {
+      try {
+        saveChat(currentChatName, { model, mode, tokenCount: tokens.total, agentHistory: agent.history || [], displayMessages });
+        broadcast({ type: 'chats_list', chats: listChats() });
+      } catch {}
+    }
+  }
+
   // ── Slash commands ──────────────────────────────────────────────────────────
   // ws param used for commands that only affect the requesting client (none currently)
 
@@ -326,7 +385,9 @@ function createSharedSession(defaultModel, defaultMode) {
         agent.clearHistory();
         tokens = { total: 0, input: 0, output: 0 };
         lastUserMsg = ''; displayMessages = [];
+        currentChatName = null; chatAutoNamed = false; messageQueue = [];
         broadcast({ type: 'clear' });
+        broadcast({ type: 'queue_update', count: 0 });
         broadcastStatus();
         break;
 
@@ -430,7 +491,9 @@ function createSharedSession(defaultModel, defaultMode) {
       case 'save':
         if (!arg) { error('usage: /save <chatname>'); break; }
         saveChat(arg, { model, mode, tokenCount: tokens.total, agentHistory: agent.history || [], displayMessages });
+        currentChatName = arg; chatAutoNamed = true;
         info(`Chat saved as "${arg}".`);
+        broadcast({ type: 'chats_list', chats: listChats() });
         break;
 
       case 'resume': {
@@ -447,6 +510,7 @@ function createSharedSession(defaultModel, defaultMode) {
         tokens = { total: chat.tokenCount || 0, input: 0, output: chat.tokenCount || 0 };
         agent.setModel(model); agent.setMode(mode);
         displayMessages = chat.displayMessages || [];
+        currentChatName = arg; chatAutoNamed = true; messageQueue = [];
         broadcast({ type: 'resume', model, mode, messages: displayMessages });
         broadcastStatus();
         break;
