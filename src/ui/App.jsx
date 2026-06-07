@@ -1517,6 +1517,28 @@ export function App({
             return true;
           }
 
+          if (sub === 'toggle') {
+            const name = mcpRest[0];
+            if (!name) { pushStatic({ type: 'error', content: 'usage: /mcp toggle <name>' }); return true; }
+            const status = MCP.getStatus().find(s => s.name === name);
+            if (!status) { pushStatic({ type: 'error', content: `No server named "${name}". Use /mcp browse to see available.` }); return true; }
+            if (status.disabled) {
+              // Enable it
+              pushStatic({ type: 'info', content: `Starting "${name}"…` });
+              setThinking(true); setThinkingWord('connecting');
+              try {
+                const srv = await MCP.enableServer(name);
+                if (srv?.ready) pushStatic({ type: 'info', content: `✔ "${name}" enabled — ${srv.tools.length} tool${srv.tools.length !== 1 ? 's' : ''} available` });
+                else pushStatic({ type: 'error', content: `"${name}" failed to start: ${srv?.error}` });
+              } catch (err) { pushStatic({ type: 'error', content: `Enable failed: ${err.message}` }); }
+              finally { setThinking(false); }
+            } else {
+              MCP.disableServer(name);
+              pushStatic({ type: 'info', content: `⏸ "${name}" disabled. Use /mcp toggle ${name} to re-enable.` });
+            }
+            return true;
+          }
+
           if (sub === 'enable') {
             const name = mcpRest[0];
             if (!name) {

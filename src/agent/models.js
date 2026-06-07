@@ -69,5 +69,18 @@ export function createClient(modelAlias) {
     return { type: 'veil', client: new OpenAI({ apiKey: 'no-key', baseURL: BASE_URLS.veil }) };
   }
 
+  if (provider === 'openrouter') {
+    const key = API_KEYS.openrouter;
+    if (!key) throw new Error('OPENROUTER_API_KEY not set — use /api openrouter <key>');
+    return { type: 'openai', client: new OpenAI({
+      apiKey: key,
+      baseURL: BASE_URLS.openrouter,
+      defaultHeaders: {
+        'HTTP-Referer': 'https://axion.amplifiedsmp.org',
+        'X-Title': 'Axion',
+      },
+    }) };
+  }
+
   throw new Error(`Unknown provider for model: ${modelAlias}`);
 }

@@ -25,6 +25,8 @@ export const MODELS = {
   'gemini-pro':       'gemini-1.5-pro',
   'gemini-2.5-pro':   'gemini-2.5-pro-preview-05-06',
   'gemini-2.5-flash': 'gemini-2.5-flash-preview-05-20',
+  openrouter:         'meta-llama/llama-3.3-70b-instruct',
+  'or':               'meta-llama/llama-3.3-70b-instruct',
   ollama:             'llama3',
   veil:               'veil',
 };
@@ -45,26 +47,30 @@ export const MODEL_PROVIDERS = {
   'gemini-pro':       'gemini',
   'gemini-2.5-pro':   'gemini',
   'gemini-2.5-flash': 'gemini',
+  openrouter:         'openrouter',
+  'or':               'openrouter',
   ollama:             'ollama',
   veil:               'veil',
 };
 
 export const API_KEYS = {
-  anthropic:  process.env.ANTHROPIC_API_KEY,
-  openai:     process.env.OPENAI_API_KEY,
-  groq:       process.env.GROQ_API_KEY,
-  mistral:    process.env.MISTRAL_API_KEY,
-  gemini:     process.env.GEMINI_API_KEY,
-  tavily:     process.env.TAVILY_API_KEY,
-  sketchfab:  process.env.SKETCHFAB_API_KEY,
+  anthropic:   process.env.ANTHROPIC_API_KEY,
+  openai:      process.env.OPENAI_API_KEY,
+  groq:        process.env.GROQ_API_KEY,
+  mistral:     process.env.MISTRAL_API_KEY,
+  gemini:      process.env.GEMINI_API_KEY,
+  openrouter:  process.env.OPENROUTER_API_KEY,
+  tavily:      process.env.TAVILY_API_KEY,
+  sketchfab:   process.env.SKETCHFAB_API_KEY,
 };
 
 export const BASE_URLS = {
-  groq:    'https://api.groq.com/openai/v1',
-  mistral: 'https://api.mistral.ai/v1',
-  gemini:  'https://generativelanguage.googleapis.com/v1beta/openai/',
-  ollama:  'http://localhost:11434/v1',
-  veil:    'https://ravikxxbgamin-minecraftai-chat.hf.space/v1',
+  groq:        'https://api.groq.com/openai/v1',
+  mistral:     'https://api.mistral.ai/v1',
+  gemini:      'https://generativelanguage.googleapis.com/v1beta/openai/',
+  openrouter:  'https://openrouter.ai/api/v1',
+  ollama:      'http://localhost:11434/v1',
+  veil:        'https://ravikxxbgamin-minecraftai-chat.hf.space/v1',
 };
 
 // Named custom endpoints — mutated at runtime via /endpoint command.
@@ -81,7 +87,7 @@ export const IMAGE_GEN_MODEL = { current: process.env.AXION_IMAGE_MODEL || 'dall
 export function setApiKey(modelOrProvider, key) {
   const provider = MODEL_PROVIDERS[modelOrProvider] || modelOrProvider;
   if (!Object.prototype.hasOwnProperty.call(API_KEYS, provider)) {
-    throw new Error(`Unknown provider "${provider}". Valid: anthropic, openai, groq, mistral, gemini, tavily, sketchfab`);
+    throw new Error(`Unknown provider "${provider}". Valid: anthropic, openai, groq, mistral, gemini, openrouter, tavily, sketchfab`);
   }
   API_KEYS[provider] = key;
   return provider;

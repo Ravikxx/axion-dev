@@ -501,7 +501,7 @@ async function run(userMessage) {
 
       const toolResults = [];
       for (const tb of toolBlocks) {
-        const toolEl = renderToolCall(tb.name, tb.id);
+        const toolEl = renderToolCall(tb.name, tb.id, tb.input);
         let result;
         try { result = await executeTool(tb.name, tb.input); }
         catch (e) { result = { error: e.message }; }
@@ -516,7 +516,8 @@ async function run(userMessage) {
           });
         } else {
           const output = JSON.stringify(result, null, 2);
-          resolveToolEl(toolEl, !result?.error, result?.error || output.slice(0, 120));
+          const isThinking = tb.name && tb.name.includes('sequentialthinking');
+          resolveToolEl(toolEl, !result?.error, isThinking ? null : (result?.error || output.slice(0, 120)));
           toolResults.push({ type: 'tool_result', tool_use_id: tb.id, content: output });
         }
       }
@@ -721,12 +722,37 @@ function showPageReadIndicator() {
   return el;
 }
 
-function renderToolCall(name, id) {
+function renderToolCall(name, id, input) {
+  const isThinking = name && name.includes('sequentialthinking');
+
   const wrap = div('msg-tool'); wrap.dataset.toolId = id;
-  const icon = div('tool-icon pending'); icon.textContent = '◌';
-  const body = div('tool-body'); const nameEl = div('tool-name'); nameEl.textContent = name;
-  body.appendChild(nameEl); wrap.append(icon, body); $messages.appendChild(wrap);
-  scrollBottom(); return wrap;
+  const icon = div('tool-icon pending');
+  icon.textContent = isThinking ? '💭' : '◌';
+  const body = div('tool-body');
+  const nameEl = div('tool-name');
+
+  if (isThinking && input) {
+    const num   = input.thoughtNumber || '?';
+    const total = input.totalThoughts || '?';
+    nameEl.textContent = `Thought ${num}/${total}`;
+    if (input.thought) {
+      const preview = div('tool-output');
+      preview.style.color = 'var(--text-muted, #888)';
+      preview.textContent = input.thought.slice(0, 180) + (input.thought.length > 180 ? '…' : '');
+      body.appendChild(nameEl);
+      body.appendChild(preview);
+    } else {
+      body.appendChild(nameEl);
+    }
+  } else {
+    nameEl.textContent = name;
+    body.appendChild(nameEl);
+  }
+
+  wrap.append(icon, body);
+  $messages.appendChild(wrap);
+  scrollBottom();
+  return wrap;
 }
 
 function resolveToolEl(wrap, success, output) {
