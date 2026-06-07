@@ -76,7 +76,7 @@ Or set them live inside the CLI:
 
 | Alias | Provider | Notes |
 |---|---|---|
-| `veil` | Axion Labs | No key required — start here |
+| `veil` | Axion Labs | No key required — free but slow (up to 100s), not broken |
 | `openrouter` / `or` | OpenRouter | 200+ models via one key |
 | `claude` | Anthropic | claude-sonnet-4-6 |
 | `claude-opus` | Anthropic | claude-opus-4-8 |

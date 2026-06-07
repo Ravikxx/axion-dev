@@ -211,6 +211,7 @@ function WelcomeBanner({ model, mode }) {
             <>
               <Text color="yellowBright" bold>Welcome to Axion!</Text>
               <Text color="gray">  You're on <Text color="cyan">Veil</Text> — no API key needed, start chatting now.</Text>
+              <Text color="yellow" dimColor>  ⚠ Veil is free but slow — responses can take up to 100s. Not broken!</Text>
               <Text color="gray">  To use Claude/GPT/Gemini: <Text color="white">/api claude sk-ant-...</Text></Text>
               <Text color="gray">  Switch models anytime:    <Text color="white">/model claude</Text></Text>
               <Text color="gray">  Browse MCP integrations:  <Text color="white">/mcp browse</Text></Text>
