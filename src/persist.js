@@ -152,13 +152,14 @@ export function undoStackSize() { return _undoStack.length; }
 
 const CHATS_DIR = join(DIR, 'chats');
 
-export function saveChat(name, { model, mode, tokenCount, agentHistory, displayMessages }) {
+export function saveChat(name, { model, mode, tokenCount, agentHistory, displayMessages, tab = 'code' }) {
   if (!existsSync(CHATS_DIR)) mkdirSync(CHATS_DIR, { recursive: true });
   const data = {
     name,
     savedAt: new Date().toISOString(),
     model,
     mode,
+    tab,
     tokenCount,
     // Strip tool-call internals from history — keep only user/assistant text
     agentHistory: agentHistory
@@ -288,7 +289,7 @@ export function listChats() {
     .map((f) => {
       try {
         const d = JSON.parse(readFileSync(join(CHATS_DIR, f), 'utf8'));
-        return { name: d.name, model: d.model, savedAt: d.savedAt, messages: d.displayMessages?.length ?? 0 };
+        return { name: d.name, model: d.model, savedAt: d.savedAt, messages: d.displayMessages?.length ?? 0, tab: d.tab || 'code' };
       } catch {
         return { name: f.slice(0, -5) };
       }

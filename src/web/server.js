@@ -126,6 +126,7 @@ function createSharedSession(defaultModel, defaultMode) {
 
   let currentChatName = null;
   let chatAutoNamed   = false;
+  let sessionTab      = null; // null = new session; 'code' or 'chat' once first message sent
   let messageQueue    = [];
   let cancelFn        = null;
   let streamBuffer    = '';
@@ -237,6 +238,7 @@ function createSharedSession(defaultModel, defaultMode) {
           cwd: process.cwd(),
           history: displayMessages,
           chats: listChats(),
+          sessionTab,
         });
         broadcastStatus();
         return;
@@ -324,7 +326,12 @@ function createSharedSession(defaultModel, defaultMode) {
   // ── Process a user message (handles cancel, queue drain, auto-save) ───────────
 
   async function processMessage(input, clientType, tab = 'code') {
-    agent.setChatMode(tab === 'chat');
+    // Lock session to the tab of the first message
+    if (sessionTab === null) {
+      sessionTab = tab;
+      broadcast({ type: 'session_tab', tab: sessionTab });
+    }
+    agent.setChatMode(sessionTab === 'chat');
     lastUserMsg = input;
     const userMsg = { type: 'user', content: input, source: clientType };
     displayMessages.push(userMsg);
@@ -374,7 +381,7 @@ function createSharedSession(defaultModel, defaultMode) {
     }
     if (currentChatName) {
       try {
-        saveChat(currentChatName, { model, mode, tokenCount: tokens.total, agentHistory: agent.history || [], displayMessages });
+        saveChat(currentChatName, { model, mode, tokenCount: tokens.total, agentHistory: agent.history || [], displayMessages, tab: sessionTab || 'code' });
       } catch (err) {
         console.error('[autoSave] saveChat failed:', err.message);
       }
@@ -385,7 +392,7 @@ function createSharedSession(defaultModel, defaultMode) {
   // ── Slash commands ──────────────────────────────────────────────────────────
   // ws param used for commands that only affect the requesting client (none currently)
 
-  async function handleCommand(input, _ws) {
+  async function handleCommand(input, _ws) { // eslint-disable-line no-unused-vars
     const [cmd, ...args] = input.slice(1).trim().split(/\s+/);
     const arg = args.join(' ');
     const info  = (content) => pushDisplay({ type: 'info',  content });
@@ -398,7 +405,7 @@ function createSharedSession(defaultModel, defaultMode) {
         agent.clearHistory();
         tokens = { total: 0, input: 0, output: 0 };
         lastUserMsg = ''; displayMessages = [];
-        currentChatName = null; chatAutoNamed = false; messageQueue = [];
+        currentChatName = null; chatAutoNamed = false; sessionTab = null; messageQueue = [];
         broadcast({ type: 'clear' });
         broadcast({ type: 'queue_update', count: 0 });
         broadcastStatus();
@@ -503,28 +510,36 @@ function createSharedSession(defaultModel, defaultMode) {
 
       case 'save':
         if (!arg) { error('usage: /save <chatname>'); break; }
-        saveChat(arg, { model, mode, tokenCount: tokens.total, agentHistory: agent.history || [], displayMessages });
+        saveChat(arg, { model, mode, tokenCount: tokens.total, agentHistory: agent.history || [], displayMessages, tab: sessionTab || 'code' });
         currentChatName = arg; chatAutoNamed = true;
         info(`Chat saved as "${arg}".`);
         broadcast({ type: 'chats_list', chats: listChats() });
         break;
 
       case 'resume': {
+        const isCli = _ws._clientType === 'cli';
         if (!arg) {
-          const chats = listChats();
-          if (!chats.length) { info('No saved chats. Use /save <chatname> to save one.'); break; }
-          info(`Saved chats:\n${chats.map(c => `  ${c.name.padEnd(20)} ${(c.model||'?').padEnd(14)} ${c.savedAt ? new Date(c.savedAt).toLocaleString() : '?'}`).join('\n')}\n\nUse /resume <chatname> to load one.`);
+          const allChats = listChats();
+          const visible  = isCli ? allChats.filter(c => (c.tab || 'code') === 'code') : allChats;
+          if (!visible.length) { info('No saved chats. Use /save <chatname> to save one.'); break; }
+          info(`Saved chats:\n${visible.map(c => `  ${c.name.padEnd(20)} ${(c.model||'?').padEnd(14)} ${c.savedAt ? new Date(c.savedAt).toLocaleString() : '?'}`).join('\n')}\n\nUse /resume <chatname> to load one.`);
           break;
         }
         const chat = loadChat(arg);
         if (!chat) { error(`No saved chat named "${arg}".`); break; }
+        // CLI can only resume code chats
+        if (isCli && (chat.tab || 'code') !== 'code') {
+          error(`Chat "${arg}" is a chat-type session and cannot be resumed from the CLI.`);
+          break;
+        }
         agent.history = chat.agentHistory || [];
         model = chat.model || model; mode = chat.mode || mode;
         tokens = { total: chat.tokenCount || 0, input: 0, output: chat.tokenCount || 0 };
         agent.setModel(model); agent.setMode(mode);
         displayMessages = chat.displayMessages || [];
+        sessionTab = chat.tab || 'code';
         currentChatName = arg; chatAutoNamed = true; messageQueue = [];
-        broadcast({ type: 'resume', model, mode, messages: displayMessages });
+        broadcast({ type: 'resume', model, mode, messages: displayMessages, tab: sessionTab });
         broadcastStatus();
         break;
       }

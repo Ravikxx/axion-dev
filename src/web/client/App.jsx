@@ -213,7 +213,7 @@ function Spinner() {
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
 
-function Sidebar({ open, chats, activeTab, onTabChange, onNewChat, onResume, onRefresh, onToggle, onDeleteChat, onRenameChat, onSettings }) {
+function Sidebar({ open, chats, activeTab, sessionTab, onTabChange, onNewChat, onResume, onRefresh, onToggle, onDeleteChat, onRenameChat, onSettings }) {
   const [renaming, setRenaming]       = useState(null); // { name, value }
   const [contextMenu, setContextMenu] = useState(null); // { x, y, name }
 
@@ -227,8 +227,11 @@ function Sidebar({ open, chats, activeTab, onTabChange, onNewChat, onResume, onR
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   }
 
+  // Only show chats that match the active tab
+  const tabChats = chats.filter(c => (c.tab || 'code') === activeTab);
+
   const grouped = {};
-  for (const c of chats) {
+  for (const c of tabChats) {
     const g = fmtDate(c.savedAt);
     if (!grouped[g]) grouped[g] = [];
     grouped[g].push(c);
@@ -264,13 +267,17 @@ function Sidebar({ open, chats, activeTab, onTabChange, onNewChat, onResume, onR
       <nav className="sidebar-nav">
         <button
           className={`sidebar-nav-item ${activeTab === 'chat' ? 'active' : ''}`}
-          onClick={() => onTabChange('chat')}
+          onClick={() => !sessionTab && onTabChange('chat')}
+          disabled={!!sessionTab && activeTab !== 'chat'}
+          title={sessionTab && activeTab !== 'chat' ? 'Start a new chat to switch tabs' : 'Chat mode'}
         >
           <span className="nav-icon">💬</span> Chat
         </button>
         <button
           className={`sidebar-nav-item ${activeTab === 'code' ? 'active' : ''}`}
-          onClick={() => onTabChange('code')}
+          onClick={() => !sessionTab && onTabChange('code')}
+          disabled={!!sessionTab && activeTab !== 'code'}
+          title={sessionTab && activeTab !== 'code' ? 'Start a new chat to switch tabs' : 'Code mode'}
         >
           <span className="nav-icon">⌨</span> Code
         </button>
@@ -279,9 +286,9 @@ function Sidebar({ open, chats, activeTab, onTabChange, onNewChat, onResume, onR
       <div className="sidebar-divider" />
 
       <div className="sidebar-chats">
-        {chats.length === 0 ? (
+        {tabChats.length === 0 ? (
           <div className="sidebar-empty">
-            No saved chats yet<br />
+            No {activeTab} chats yet<br />
             <span>Chats auto-save after first message</span>
           </div>
         ) : (
@@ -504,7 +511,8 @@ export default function App() {
   const [connected, setConnected]         = useState(false);
   const [chats, setChats]                 = useState([]);
   const [sidebarOpen, setSidebarOpen]     = useState(true);
-  const [activeTab, setActiveTab]         = useState('chat');
+  const [activeTab, setActiveTab]         = useState('code');
+  const [sessionTab, setSessionTab]       = useState(null); // null = new chat (tab unlocked)
   const [queuedCount, setQueuedCount]     = useState(0);
   const [showSettings, setShowSettings]   = useState(false);
 
@@ -559,6 +567,7 @@ export default function App() {
           setStatus({ model: data.model, mode: data.mode, tokens: { total: 0, input: 0, output: 0 } });
           if (data.chats) setChats(data.chats);
           if (data.history?.length) setMessages(data.history.map(m => ({ ...m, _key: Math.random() })));
+          if (data.sessionTab) { setSessionTab(data.sessionTab); setActiveTab(data.sessionTab); }
           break;
 
         case 'chats_list':
@@ -624,13 +633,20 @@ export default function App() {
           setStatus(s => ({ ...s, model: data.model, mode: data.mode, tokens: data.tokens || s?.tokens || { total: 0, input: 0, output: 0 }, goal: data.goal, extThinking: data.extThinking }));
           break;
 
+        case 'session_tab':
+          setSessionTab(data.tab);
+          setActiveTab(data.tab);
+          break;
+
         case 'clear':
           setMessages([]); setStreamContent(null); streamBufRef.current = ''; setQueuedCount(0);
+          setSessionTab(null);
           break;
 
         case 'resume':
           setMessages((data.messages || []).map(m => ({ ...m, _key: Math.random() })));
           setStatus(s => ({ ...s, model: data.model, mode: data.mode }));
+          if (data.tab) { setSessionTab(data.tab); setActiveTab(data.tab); }
           break;
 
         default: break;
@@ -731,7 +747,8 @@ export default function App() {
         open={sidebarOpen}
         chats={chats}
         activeTab={activeTab}
-        onTabChange={tab => { setActiveTab(tab); setShowSettings(false); }}
+        sessionTab={sessionTab}
+        onTabChange={tab => { if (!sessionTab) { setActiveTab(tab); setShowSettings(false); } }}
         onNewChat={() => { sendWs({ type: 'submit', content: '/clear' }); setShowSettings(false); }}
         onResume={name => { sendWs({ type: 'submit', content: `/resume ${name}` }); setShowSettings(false); }}
         onRefresh={() => sendWs({ type: 'list_chats' })}

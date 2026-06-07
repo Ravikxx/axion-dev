@@ -84,8 +84,9 @@
       color: var(--muted2); font-family: var(--font); font-size: 12px; cursor: pointer;
       text-align: left; transition: background 0.12s, color 0.12s; white-space: nowrap;
     }
-    .sidebar-nav-item:hover { background: var(--bg3); color: var(--text); }
+    .sidebar-nav-item:hover:not(:disabled) { background: var(--bg3); color: var(--text); }
     .sidebar-nav-item.active { background: var(--bg3); color: var(--primary); }
+    .sidebar-nav-item:disabled { opacity: 0.35; cursor: not-allowed; }
     .nav-icon { font-size: 13px; }
 
     .sidebar-divider { height: 1px; background: var(--border-s); margin: 6px 10px; flex-shrink: 0; }
