@@ -406,12 +406,15 @@ export function App({
 
   const runAgent = useCallback(
     async (message, isRetry = false) => {
-      const askConfirm = (tc) =>
-        new Promise((resolve) => {
+      const askConfirm = (tc) => {
+        // Never prompt for sequential thinking — it's internal reasoning, not an action
+        if (tc.name && tc.name.includes('sequentialthinking')) return Promise.resolve(true);
+        return new Promise((resolve) => {
           setPendingConfirm({ name: tc.name, label: confirmLabel(tc.name, tc.input) });
           setInputMode('confirm-tool');
           confirmResolverRef.current = resolve;
         });
+      };
       const askPlanConfirm = () =>
         new Promise((resolve) => {
           setInputMode('confirm-plan');
