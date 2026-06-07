@@ -3,6 +3,11 @@ import { Box, Text } from 'ink';
 import { collapseDiff, diffStats } from '../utils/diff.js';
 
 export function ToolBlock({ name, input, output, success, pending, diff, expanded }) {
+  // Special rendering for sequential thinking steps
+  if (name && name.includes('sequentialthinking')) {
+    return <ThinkingStep input={input} pending={pending} />;
+  }
+
   const label       = formatLabel(name, input);
   const statusColor = pending ? 'yellow' : success === false ? 'red' : 'greenBright';
   const dot         = pending ? '◌' : success === false ? '✖' : '✔';
@@ -46,6 +51,33 @@ export function ToolBlock({ name, input, output, success, pending, diff, expande
       {showDiff && !expanded && (
         <Box marginLeft={2}>
           <Text color="gray" dimColor>Ctrl+E to expand</Text>
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+function ThinkingStep({ input, pending }) {
+  if (!input) return null;
+  const { thought, thoughtNumber, totalThoughts, isRevision, revisesThought, branchId } = input;
+  const num   = thoughtNumber || '?';
+  const total = totalThoughts || '?';
+  const dot   = pending ? '◌' : '💭';
+  const badge = isRevision
+    ? ` (revising #${revisesThought})`
+    : branchId ? ` [branch ${branchId}]` : '';
+
+  return (
+    <Box flexDirection="column" marginLeft={2} marginY={0}>
+      <Box gap={1}>
+        <Text color="magenta">{dot}</Text>
+        <Text color="magenta" bold>Thought {num}/{total}</Text>
+        {badge ? <Text color="gray" dimColor>{badge}</Text> : null}
+        {pending && <Text color="yellow" dimColor> thinking…</Text>}
+      </Box>
+      {thought && (
+        <Box marginLeft={2}>
+          <Text color="gray" dimColor>{truncate(thought, 200)}</Text>
         </Box>
       )}
     </Box>
