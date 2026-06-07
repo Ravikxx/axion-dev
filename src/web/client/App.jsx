@@ -486,7 +486,7 @@ export default function App() {
       setInputValue('');
       return;
     }
-    sendWs({ type: 'submit', content: val });
+    sendWs({ type: 'submit', content: val, tab: activeTab });
     setInputValue('');
     if (inputRef.current) inputRef.current.style.height = 'auto';
   }, [inputValue, inputMode, sendWs, sendConfirm]);

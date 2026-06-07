@@ -99,6 +99,12 @@ Write your reasoning as plain text inside the tags — never call tools inside a
 
 TOOL DISCIPLINE: Never use send_message to send a message to yourself or to "main" when you are the main agent — that is pointless self-messaging. send_message is only for communicating with other agents spawned by spawn_agents. Do not use any tool as a substitute for thinking.` + PROJECT_CONTEXT;
 
+const CHAT_SYSTEM_PROMPT = `You are Axion, a helpful AI assistant made by Axion Labs. You are having a conversation — help with questions, writing, brainstorming, explaining concepts, and general topics.
+
+You are in Chat mode. You have no access to files, the terminal, or any tools. Just talk. Be friendly, clear, and concise.
+
+REASONING: Use <think>...</think> tags to think through nuanced or complex questions before answering. Write reasoning as plain text inside the tags, then give your response after.`;
+
 const TOOL_FALLBACK_PROMPT = `
 You have access to the following tools. To use one, emit exactly this XML (one call per block):
 <tool_call>{"name": "TOOL_NAME", "input": {ARGS_JSON}}</tool_call>
@@ -196,6 +202,8 @@ export class Agent {
     this.computerUse  = false;
     // Adviser model — null means auto-pick
     this.adviserModel = null;
+    // Chat mode — simplified prompt, no tools
+    this.chatMode = false;
 
     this.onToolCall    = onToolCall    || (() => {});
     this.onToolResult  = onToolResult  || (() => {});
@@ -211,6 +219,7 @@ export class Agent {
   setMode(mode)            { this.mode = mode; }
   setModel(alias)          { this.modelAlias = alias; }
   setSystemOverride(text)  { this.systemOverride = text; }
+  setChatMode(enabled)     { this.chatMode = !!enabled; }
   setThinking(enabled, budget = 10000) { this.thinking = { enabled, budget }; }
   setGoal(description)     { this.goal = description || null; }
   setComputerUse(enabled)  { this.computerUse = !!enabled; }
@@ -225,6 +234,19 @@ export class Agent {
   getTokens() { return this.totalTokens; }
 
   _getSystemPrompt() {
+    // Chat tab: simplified conversational prompt — no tools, no coding context
+    if (this.chatMode) {
+      let prompt = CHAT_SYSTEM_PROMPT;
+      const memories = getMemories();
+      if (memories.length) {
+        prompt += `\n\nUser's notes (always remember these):\n${memories.map((m, i) => `${i + 1}. ${m.text}`).join('\n')}`;
+      }
+      if (this.systemOverride) {
+        prompt += `\n\nADDITIONAL INSTRUCTIONS: ${this.systemOverride}`;
+      }
+      return prompt;
+    }
+
     let prompt = SYSTEM_PROMPT;
     const memories = getMemories();
     if (memories.length) {

@@ -258,14 +258,14 @@ function createSharedSession(defaultModel, defaultMode) {
         }
 
         if (thinking) {
-          messageQueue.push({ input, clientType: ws._clientType || 'web' });
+          messageQueue.push({ input, clientType: ws._clientType || 'web', tab: msg.tab || 'code' });
           const count = messageQueue.length;
           broadcast({ type: 'queue_update', count });
           sendTo(ws, { type: 'message', msg: { type: 'info', content: `⏱ Queued (${count}): "${input.slice(0, 60)}${input.length > 60 ? '…' : ''}"` } });
           return;
         }
 
-        await processMessage(input, ws._clientType || 'web');
+        await processMessage(input, ws._clientType || 'web', msg.tab || 'code');
       }
     });
 
@@ -313,7 +313,8 @@ function createSharedSession(defaultModel, defaultMode) {
 
   // ── Process a user message (handles cancel, queue drain, auto-save) ───────────
 
-  async function processMessage(input, clientType) {
+  async function processMessage(input, clientType, tab = 'code') {
+    agent.setChatMode(tab === 'chat');
     lastUserMsg = input;
     const userMsg = { type: 'user', content: input, source: clientType };
     displayMessages.push(userMsg);
@@ -342,7 +343,7 @@ function createSharedSession(defaultModel, defaultMode) {
       if (messageQueue.length > 0) {
         const next = messageQueue.shift();
         broadcast({ type: 'queue_update', count: messageQueue.length });
-        await processMessage(next.input, next.clientType);
+        await processMessage(next.input, next.clientType, next.tab);
       } else {
         broadcast({ type: 'queue_update', count: 0 });
       }
