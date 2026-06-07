@@ -128,6 +128,7 @@ function createSharedSession(defaultModel, defaultMode) {
   let chatAutoNamed   = false;
   let messageQueue    = [];
   let cancelFn        = null;
+  let streamBuffer    = '';
 
   const MAX_GOAL_ITERS = 25;
   const THINKING_WORDS = ['baking','brewing','conjuring','weaving','crafting',
@@ -172,8 +173,17 @@ function createSharedSession(defaultModel, defaultMode) {
     modelAlias: model,
     mode,
     onTokens: (t) => { tokens = t; broadcast({ type: 'tokens', ...t }); },
-    onStreamChunk: (chunk) => broadcast({ type: 'stream_chunk', content: chunk }),
-    onStreamEnd:   ()      => broadcast({ type: 'stream_end' }),
+    onStreamChunk: (chunk) => {
+      streamBuffer += chunk;
+      broadcast({ type: 'stream_chunk', content: chunk });
+    },
+    onStreamEnd: () => {
+      if (streamBuffer.trim()) {
+        displayMessages.push({ type: 'assistant', content: streamBuffer });
+      }
+      streamBuffer = '';
+      broadcast({ type: 'stream_end' });
+    },
     onToolCall: ({ name, input, id }) => {
       const msg = { type: 'tool', id, name, input, output: null, success: null, pending: true };
       displayMessages.push(msg);
@@ -521,8 +531,24 @@ function createSharedSession(defaultModel, defaultMode) {
 
       case 'remove-chat':
         if (!arg) { error('usage: /remove-chat <chatname>'); break; }
-        if (deleteChat(arg)) info(`Chat "${arg}" deleted.`); else error(`No saved chat named "${arg}".`);
+        if (deleteChat(arg)) {
+          if (currentChatName === arg) { currentChatName = null; chatAutoNamed = false; }
+          broadcast({ type: 'chats_list', chats: listChats() });
+        } else { error(`No saved chat named "${arg}".`); }
         break;
+
+      case 'rename-chat': {
+        const [oldName, ...rest] = args;
+        const newName = rest.join(' ').trim();
+        if (!oldName || !newName) { error('usage: /rename-chat <oldname> <newname>'); break; }
+        const chat = loadChat(oldName);
+        if (!chat) { error(`No saved chat named "${oldName}".`); break; }
+        saveChat(newName, chat);
+        deleteChat(oldName);
+        if (currentChatName === oldName) currentChatName = newName;
+        broadcast({ type: 'chats_list', chats: listChats() });
+        break;
+      }
 
       case 'models': {
         const built = Object.entries(MODELS).map(([a,id]) => `  ${a.padEnd(22)} ${id}`).join('\n');

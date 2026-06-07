@@ -6,6 +6,19 @@ const MODELS_LIST = [
   'groq', 'mistral', 'ollama', 'openrouter',
 ];
 
+const OPENROUTER_MODELS = [
+  'meta-llama/llama-3.3-70b-instruct',
+  'deepseek/deepseek-r1',
+  'deepseek/deepseek-chat-v3-0324',
+  'google/gemini-2.0-flash-exp:free',
+  'google/gemini-2.5-pro-preview',
+  'anthropic/claude-3-5-sonnet',
+  'openai/gpt-4o',
+  'openai/gpt-4o-mini',
+  'mistralai/mixtral-8x7b-instruct',
+  'qwen/qwen-2.5-72b-instruct',
+];
+
 // ── RichText renderer ─────────────────────────────────────────────────────────
 
 function RichText({ text }) {
@@ -122,15 +135,13 @@ function MessageRow({ msg }) {
     case 'user':
       return (
         <div className="msg msg-user">
-          <div className="msg-label user-label">{msg.source === 'cli' ? 'you [cli]' : 'you'}</div>
-          <div className="msg-body">{msg.content}</div>
+          <div className="bubble bubble-user">{msg.content}</div>
         </div>
       );
     case 'assistant':
       return (
         <div className="msg msg-assistant">
-          <div className="msg-label axion-label">Axion</div>
-          <div className="msg-body">
+          <div className="bubble bubble-ai">
             {msg.streaming
               ? <><span>{msg.content}</span><span className="streaming-cursor" /></>
               : <RichText text={msg.content} />}
@@ -202,7 +213,10 @@ function Spinner() {
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
 
-function Sidebar({ open, chats, activeTab, onTabChange, onNewChat, onResume, onRefresh, onToggle }) {
+function Sidebar({ open, chats, activeTab, onTabChange, onNewChat, onResume, onRefresh, onToggle, onDeleteChat, onRenameChat, onSettings }) {
+  const [renaming, setRenaming]       = useState(null); // { name, value }
+  const [contextMenu, setContextMenu] = useState(null); // { x, y, name }
+
   function fmtDate(iso) {
     if (!iso) return 'Saved';
     const d = new Date(iso), now = new Date();
@@ -219,6 +233,22 @@ function Sidebar({ open, chats, activeTab, onTabChange, onNewChat, onResume, onR
     if (!grouped[g]) grouped[g] = [];
     grouped[g].push(c);
   }
+
+  function commitRename(c) {
+    if (renaming && renaming.value.trim() && renaming.value.trim() !== c.name) {
+      onRenameChat(c.name, renaming.value.trim());
+    }
+    setRenaming(null);
+  }
+
+  // Dismiss context menu on outside click
+  useEffect(() => {
+    if (!contextMenu) return;
+    const dismiss = () => setContextMenu(null);
+    window.addEventListener('click', dismiss);
+    window.addEventListener('contextmenu', dismiss);
+    return () => { window.removeEventListener('click', dismiss); window.removeEventListener('contextmenu', dismiss); };
+  }, [contextMenu]);
 
   return (
     <div id="sidebar" className={open ? '' : 'collapsed'}>
@@ -259,17 +289,59 @@ function Sidebar({ open, chats, activeTab, onTabChange, onNewChat, onResume, onR
             <div key={grp} className="sidebar-group">
               <div className="sidebar-group-title">{grp}</div>
               {items.map(c => (
-                <button key={c.name} className="sidebar-chat-item" onClick={() => onResume(c.name)} title={c.name}>
-                  <span className="chat-item-name">{c.name}</span>
-                </button>
+                <div key={c.name} className="sidebar-chat-item-wrap">
+                  {renaming?.name === c.name ? (
+                    <input
+                      className="chat-rename-input"
+                      value={renaming.value}
+                      onChange={e => setRenaming(r => ({ ...r, value: e.target.value }))}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') commitRename(c);
+                        if (e.key === 'Escape') setRenaming(null);
+                      }}
+                      onBlur={() => commitRename(c)}
+                      autoFocus
+                    />
+                  ) : (
+                    <button
+                      className="sidebar-chat-item"
+                      onClick={() => onResume(c.name)}
+                      onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setContextMenu({ x: e.clientX, y: e.clientY, name: c.name }); }}
+                      title={`${c.name}\nRight-click for options`}
+                    >
+                      <span className="chat-item-name">{c.name}</span>
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
           ))
         )}
       </div>
 
+      {/* Right-click context menu */}
+      {contextMenu && (
+        <div
+          className="chat-context-menu"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          onClick={e => e.stopPropagation()}
+        >
+          <button className="ctx-item" onClick={() => { onResume(contextMenu.name); setContextMenu(null); }}>
+            ▶ Resume
+          </button>
+          <button className="ctx-item" onClick={() => { setRenaming({ name: contextMenu.name, value: contextMenu.name }); setContextMenu(null); }}>
+            ✏ Rename
+          </button>
+          <div className="ctx-divider" />
+          <button className="ctx-item ctx-item-danger" onClick={() => { onDeleteChat(contextMenu.name); setContextMenu(null); }}>
+            🗑 Delete
+          </button>
+        </div>
+      )}
+
       <div className="sidebar-footer">
         <button className="sidebar-refresh-btn" onClick={onRefresh}>↻ Refresh</button>
+        <button className="sidebar-settings-btn" onClick={onSettings} title="Settings">⚙ Settings</button>
       </div>
     </div>
   );
@@ -309,6 +381,115 @@ function WelcomeCard({ tab, onFill }) {
   );
 }
 
+// ── Settings panel ────────────────────────────────────────────────────────────
+
+function SettingsPanel({ status, onClose, onSend }) {
+  const tokens = status?.tokens || { total: 0, input: 0, output: 0 };
+  const model  = status?.model || '—';
+  const mode   = status?.mode  || 'ask';
+  const extThinking = status?.extThinking || false;
+
+  function fmtNum(n) {
+    if (!n) return '0';
+    if (n < 1000) return String(n);
+    if (n < 1_000_000) return `${(n/1000).toFixed(1)}k`;
+    return `${(n/1_000_000).toFixed(2)}M`;
+  }
+
+  return (
+    <div className="settings-panel">
+      <div className="settings-header">
+        <span className="settings-title">⚙ Settings</span>
+        <button className="settings-close-btn" onClick={onClose}>✕</button>
+      </div>
+
+      <div className="settings-body">
+
+        <div className="settings-section">
+          <div className="settings-section-title">Model</div>
+          <select
+            className="settings-select"
+            value={model}
+            onChange={e => onSend(`/model ${e.target.value}`)}
+          >
+            <optgroup label="Built-in aliases">
+              {MODELS_LIST.map(m => <option key={m} value={m}>{m}</option>)}
+            </optgroup>
+            <optgroup label="OpenRouter models">
+              {OPENROUTER_MODELS.map(m => <option key={m} value={m}>{m}</option>)}
+            </optgroup>
+          </select>
+        </div>
+
+        <div className="settings-section">
+          <div className="settings-section-title">Mode</div>
+          <div className="settings-mode-row">
+            {['ask','plan','auto'].map(m => (
+              <button
+                key={m}
+                className={`settings-mode-btn ${mode === m ? 'active' : ''}`}
+                onClick={() => onSend(`/mode ${m}`)}
+              >
+                {m === 'auto' ? 'bypass' : m}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="settings-section">
+          <div className="settings-section-title">Extended Thinking</div>
+          <div className="settings-row">
+            <span className="settings-label">Status</span>
+            <div className="settings-row-right">
+              <button
+                className={`settings-toggle ${extThinking ? 'on' : ''}`}
+                onClick={() => onSend(extThinking ? '/thinking off' : '/thinking on')}
+              >
+                {extThinking ? 'ON' : 'OFF'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="settings-section">
+          <div className="settings-section-title">Token Usage (session)</div>
+          <div className="settings-tokens">
+            <div className="settings-token-row">
+              <span>Input</span><span className="settings-token-val">{fmtNum(tokens.input)}</span>
+            </div>
+            <div className="settings-token-row">
+              <span>Output</span><span className="settings-token-val">{fmtNum(tokens.output)}</span>
+            </div>
+            <div className="settings-token-row settings-token-total">
+              <span>Total</span><span className="settings-token-val">{fmtNum(tokens.total)}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="settings-section">
+          <div className="settings-section-title">Quick Actions</div>
+          <div className="settings-quick-actions">
+            <button className="settings-action-btn" onClick={() => onSend('/compact')}>⟳ Compact history</button>
+            <button className="settings-action-btn" onClick={() => onSend('/clear')}>✕ Clear session</button>
+          </div>
+        </div>
+
+        <div className="settings-section">
+          <div className="settings-section-title">About</div>
+          <div className="settings-about">
+            <div>API keys stored in <code>~/.axion/.env</code></div>
+            <div>Chats saved to <code>~/.axion/chats/</code></div>
+            <div style={{ marginTop: 8, color: 'var(--muted)' }}>
+              Use <code>/help</code> in chat for all commands
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
 // ── Main App ──────────────────────────────────────────────────────────────────
 
 export default function App() {
@@ -325,6 +506,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen]     = useState(true);
   const [activeTab, setActiveTab]         = useState('chat');
   const [queuedCount, setQueuedCount]     = useState(0);
+  const [showSettings, setShowSettings]   = useState(false);
 
   const wsRef          = useRef(null);
   const streamBufRef   = useRef('');
@@ -355,6 +537,10 @@ export default function App() {
   const sendWs = useCallback((data) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.send(JSON.stringify(data));
   }, []);
+
+  const sendCmd = useCallback((cmd) => {
+    sendWs({ type: 'submit', content: cmd });
+  }, [sendWs]);
 
   useEffect(() => {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -420,7 +606,6 @@ export default function App() {
 
         case 'thinking_end':
           setThinking(false); setThinkingWord('');
-          // Always refresh sidebar after a response so auto-saved chats appear
           if (wsRef.current?.readyState === WebSocket.OPEN) {
             wsRef.current.send(JSON.stringify({ type: 'list_chats' }));
           }
@@ -489,7 +674,7 @@ export default function App() {
     sendWs({ type: 'submit', content: val, tab: activeTab });
     setInputValue('');
     if (inputRef.current) inputRef.current.style.height = 'auto';
-  }, [inputValue, inputMode, sendWs, sendConfirm]);
+  }, [inputValue, inputMode, sendWs, sendConfirm, activeTab]);
 
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); }
@@ -500,6 +685,14 @@ export default function App() {
     el.style.height = 'auto';
     el.style.height = Math.min(el.scrollHeight, 200) + 'px';
   }, []);
+
+  const handleDeleteChat = useCallback((name) => {
+    sendCmd(`/remove-chat ${name}`);
+  }, [sendCmd]);
+
+  const handleRenameChat = useCallback((oldName, newName) => {
+    sendCmd(`/rename-chat ${oldName} ${newName}`);
+  }, [sendCmd]);
 
   // ── Derived ───────────────────────────────────────────────────────────────
 
@@ -526,7 +719,6 @@ export default function App() {
     : activeTab === 'code' ? 'Ask Axion to read, write, or run code…'
     : 'Ask Axion anything…';
 
-  // In Chat tab: hide tool blocks (clean conversation view)
   const visibleMessages = activeTab === 'chat'
     ? messages.filter(m => m.type !== 'tool')
     : messages;
@@ -539,11 +731,14 @@ export default function App() {
         open={sidebarOpen}
         chats={chats}
         activeTab={activeTab}
-        onTabChange={setActiveTab}
-        onNewChat={() => sendWs({ type: 'submit', content: '/clear' })}
-        onResume={name => sendWs({ type: 'submit', content: `/resume ${name}` })}
+        onTabChange={tab => { setActiveTab(tab); setShowSettings(false); }}
+        onNewChat={() => { sendWs({ type: 'submit', content: '/clear' }); setShowSettings(false); }}
+        onResume={name => { sendWs({ type: 'submit', content: `/resume ${name}` }); setShowSettings(false); }}
         onRefresh={() => sendWs({ type: 'list_chats' })}
         onToggle={() => setSidebarOpen(v => !v)}
+        onDeleteChat={handleDeleteChat}
+        onRenameChat={handleRenameChat}
+        onSettings={() => setShowSettings(v => !v)}
       />
 
       <div id="main">
@@ -553,7 +748,7 @@ export default function App() {
             <button className="sidebar-open-btn" onClick={() => setSidebarOpen(true)}>≡</button>
           )}
           <div className="topbar-title">
-            {activeTab === 'code' ? '⌨ Code' : '💬 Chat'}
+            {showSettings ? '⚙ Settings' : activeTab === 'code' ? '⌨ Code' : '💬 Chat'}
           </div>
           <div style={{ flex: 1 }} />
           <div className="topbar-badges">
@@ -573,85 +768,100 @@ export default function App() {
           )}
         </div>
 
-        {/* Messages */}
-        <div id="messages" className={hasMessages ? '' : 'empty'}>
-          {!hasMessages && (
-            <WelcomeCard
-              tab={activeTab}
-              onFill={s => { setInputValue(s); setTimeout(() => inputRef.current?.focus(), 0); }}
-            />
-          )}
-          {visibleMessages.map((msg, i) => <MessageRow key={msg._key ?? i} msg={msg} />)}
-          {streamContent !== null && (
-            <MessageRow msg={{ type: 'assistant', content: streamContent, streaming: true }} />
-          )}
-          <div ref={messagesEndRef} style={{ height: 8 }} />
-        </div>
+        {showSettings ? (
+          <SettingsPanel
+            status={status}
+            onClose={() => setShowSettings(false)}
+            onSend={cmd => { sendCmd(cmd); }}
+          />
+        ) : (
+          <>
+            {/* Messages */}
+            <div id="messages" className={hasMessages ? '' : 'empty'}>
+              {!hasMessages && (
+                <WelcomeCard
+                  tab={activeTab}
+                  onFill={s => { setInputValue(s); setTimeout(() => inputRef.current?.focus(), 0); }}
+                />
+              )}
+              {visibleMessages.map((msg, i) => <MessageRow key={msg._key ?? i} msg={msg} />)}
+              {streamContent !== null && (
+                <MessageRow msg={{ type: 'assistant', content: streamContent, streaming: true }} />
+              )}
+              <div ref={messagesEndRef} style={{ height: 8 }} />
+            </div>
 
-        {/* Thinking bar */}
-        {thinking && (
-          <div id="thinking-bar">
-            <Spinner /> <span>{thinkingWord || 'thinking'}…</span>
-            <span className="thinking-esc">ESC to stop</span>
-          </div>
-        )}
-
-        {/* Confirm bar */}
-        {(inputMode === 'confirm-tool' || inputMode === 'confirm-plan') && (
-          <div id="confirm-bar">
-            <span className="confirm-label">
-              {inputMode === 'confirm-tool'
-                ? <>run <strong style={{ color: 'var(--warm1)' }}>{confirmInfo?.name}</strong>{confirmInfo?.label ? <> · <span style={{ color: '#888' }}>{confirmInfo.label}</span></> : null}?</>
-                : 'execute this plan?'}
-            </span>
-            <button className="confirm-btn confirm-yes" onClick={() => sendConfirm(true)}>Yes (y)</button>
-            <button className="confirm-btn confirm-no"  onClick={() => sendConfirm(false)}>No (n)</button>
-          </div>
-        )}
-
-        {/* Input area */}
-        <div id="input-wrap">
-          <div className="input-card">
-            <textarea
-              id="chat-input"
-              ref={inputRef}
-              value={inputValue}
-              onChange={e => { setInputValue(e.target.value); autoResize(e.target); }}
-              onKeyDown={handleKeyDown}
-              placeholder={placeholder}
-              disabled={inputDisabled}
-              rows={1}
-              autoFocus
-            />
-            <div className="input-footer">
-              <div className="input-footer-left">
-                <button className={`mode-badge mode-badge-${currentMode}`} onClick={cycleMode} title="Click to cycle: ask → plan → bypass">
-                  {displayMode}
-                </button>
-                {tokStr && <span className="tok-count">{tokStr} tok</span>}
+            {/* Thinking bar */}
+            {thinking && (
+              <div id="thinking-bar">
+                <Spinner /> <span>{thinkingWord || 'thinking'}…</span>
+                <span className="thinking-esc">ESC to stop</span>
               </div>
-              <div className="input-footer-right">
-                <select
-                  className="model-select"
-                  value={status?.model || ''}
-                  onChange={e => sendWs({ type: 'submit', content: `/model ${e.target.value}` })}
-                  title="Switch model"
-                >
-                  {MODELS_LIST.map(m => <option key={m} value={m}>{m}</option>)}
-                </select>
-                <button
-                  className="send-btn"
-                  onClick={handleSubmit}
-                  disabled={!inputValue.trim() || inputDisabled}
-                  title="Send (Enter)"
-                >↑</button>
+            )}
+
+            {/* Confirm bar */}
+            {(inputMode === 'confirm-tool' || inputMode === 'confirm-plan') && (
+              <div id="confirm-bar">
+                <span className="confirm-label">
+                  {inputMode === 'confirm-tool'
+                    ? <>run <strong style={{ color: 'var(--warm1)' }}>{confirmInfo?.name}</strong>{confirmInfo?.label ? <> · <span style={{ color: '#888' }}>{confirmInfo.label}</span></> : null}?</>
+                    : 'execute this plan?'}
+                </span>
+                <button className="confirm-btn confirm-yes" onClick={() => sendConfirm(true)}>Yes (y)</button>
+                <button className="confirm-btn confirm-no"  onClick={() => sendConfirm(false)}>No (n)</button>
+              </div>
+            )}
+
+            {/* Input area */}
+            <div id="input-wrap">
+              <div className="input-card">
+                <textarea
+                  id="chat-input"
+                  ref={inputRef}
+                  value={inputValue}
+                  onChange={e => { setInputValue(e.target.value); autoResize(e.target); }}
+                  onKeyDown={handleKeyDown}
+                  placeholder={placeholder}
+                  disabled={inputDisabled}
+                  rows={1}
+                  autoFocus
+                />
+                <div className="input-footer">
+                  <div className="input-footer-left">
+                    <button className={`mode-badge mode-badge-${currentMode}`} onClick={cycleMode} title="Click to cycle: ask → plan → bypass">
+                      {displayMode}
+                    </button>
+                    {tokStr && <span className="tok-count">{tokStr} tok</span>}
+                  </div>
+                  <div className="input-footer-right">
+                    <select
+                      className="model-select"
+                      value={status?.model || ''}
+                      onChange={e => sendWs({ type: 'submit', content: `/model ${e.target.value}` })}
+                      title="Switch model"
+                    >
+                      <optgroup label="Built-in aliases">
+                        {MODELS_LIST.map(m => <option key={m} value={m}>{m}</option>)}
+                      </optgroup>
+                      <optgroup label="OpenRouter">
+                        {OPENROUTER_MODELS.map(m => <option key={m} value={m}>{m}</option>)}
+                      </optgroup>
+                    </select>
+                    <button
+                      className="send-btn"
+                      onClick={handleSubmit}
+                      disabled={!inputValue.trim() || inputDisabled}
+                      title="Send (Enter)"
+                    >↑</button>
+                  </div>
+                </div>
+              </div>
+              <div className="hint-text">
+                Shift+Enter for newline · /help for commands · ESC to stop · click mode to cycle
               </div>
             </div>
-          </div>
-          <div className="hint-text">
-            Shift+Enter for newline · /help for commands · ESC to stop · click mode to cycle
-          </div>
-        </div>
+          </>
+        )}
       </div>
     </div>
   );
