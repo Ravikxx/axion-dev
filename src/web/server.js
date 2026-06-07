@@ -1,0 +1,582 @@
+#!/usr/bin/env node
+import { createServer } from 'http';
+import { readFileSync, writeFileSync, unlinkSync } from 'fs';
+import { join, dirname } from 'path';
+import { homedir } from 'os';
+import { fileURLToPath } from 'url';
+import { WebSocketServer } from 'ws';
+import { Agent } from '../agent/agent.js';
+import {
+  MODELS, API_KEYS, setApiKey, CUSTOM_ENDPOINTS,
+  DEFAULT_MODEL, DEFAULT_MODE, IMAGE_GEN_MODEL,
+} from '../config.js';
+import {
+  getSavedModel, getSavedMode, getSavedApiKeys, getSavedCustomEndpoints,
+  saveModel, saveMode, saveApiKey, saveCustomEndpoints,
+  saveChat, loadChat, listChats, deleteChat,
+  undoLastBackup, undoStackSize,
+  getMemories, addMemory, removeMemory,
+  getSavedImageModel, saveImageModel,
+} from '../persist.js';
+import { generateImage } from '../agent/image.js';
+import { startScheduler } from '../scheduler.js';
+
+// Seed saved config exactly like the CLI does
+const _savedKeys = getSavedApiKeys();
+for (const [provider, key] of Object.entries(_savedKeys)) {
+  if (key && !API_KEYS[provider]) API_KEYS[provider] = key;
+}
+const _savedEndpoints = getSavedCustomEndpoints();
+for (const [name, ep] of Object.entries(_savedEndpoints)) {
+  if (ep?.baseURL) CUSTOM_ENDPOINTS[name] = ep;
+}
+const _savedImgModel = getSavedImageModel();
+if (_savedImgModel) IMAGE_GEN_MODEL.current = _savedImgModel;
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const DIST_DIR   = join(__dirname, '../../dist/web');
+const PORT       = Number(process.env.AXION_WEB_PORT) || 3000;
+const PID_FILE   = join(homedir(), '.axion', 'web-server.pid');
+
+// ── Static file server ────────────────────────────────────────────────────────
+
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.js':   'application/javascript',
+  '.css':  'text/css',
+  '.ico':  'image/x-icon',
+  '.png':  'image/png',
+  '.svg':  'image/svg+xml',
+};
+
+function serveFile(res, filePath, fallbackToIndex = true) {
+  const ext = (filePath.match(/\.\w+$/) || ['.html'])[0];
+  try {
+    const content = readFileSync(filePath);
+    res.writeHead(200, { 'Content-Type': MIME[ext] || 'text/plain' });
+    res.end(content);
+  } catch {
+    if (fallbackToIndex) serveFile(res, join(DIST_DIR, 'index.html'), false);
+    else { res.writeHead(404); res.end('Not found'); }
+  }
+}
+
+// ── Main export ───────────────────────────────────────────────────────────────
+
+export function start({ initialModel = getSavedModel() || DEFAULT_MODEL, initialMode = getSavedMode() || DEFAULT_MODE } = {}) {
+  const session = createSharedSession(initialModel, initialMode);
+
+  const httpServer = createServer((req, res) => {
+    // CORS for extension
+    res.setHeader('Access-Control-Allow-Origin', '*');
+
+    // Config endpoint — lets the Chrome extension import saved keys + endpoints
+    if (req.url === '/api/config') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        apiKeys:         getSavedApiKeys(),
+        customEndpoints: getSavedCustomEndpoints(),
+        model:           getSavedModel(),
+      }));
+      return;
+    }
+
+    const url = req.url === '/' ? '/index.html' : req.url;
+    serveFile(res, join(DIST_DIR, url));
+  });
+
+  const wss = new WebSocketServer({ server: httpServer });
+  wss.on('connection', (ws) => session.addClient(ws));
+
+  const schedulerTimer = startScheduler();
+
+  httpServer.listen(PORT, () => {
+    try { writeFileSync(PID_FILE, String(process.pid), 'utf8'); } catch {}
+    console.log(`\n  ◈ Axion web UI  →  http://localhost:${PORT}\n`);
+    console.log(`  Working directory: ${process.cwd()}`);
+    console.log(`  Press Ctrl+C to stop  (or /web stop in the CLI).\n`);
+  });
+
+  const cleanup = () => {
+    clearInterval(schedulerTimer);
+    try { unlinkSync(PID_FILE); } catch {}
+  };
+  process.once('exit',    cleanup);
+  process.once('SIGINT',  () => { cleanup(); process.exit(0); });
+  process.once('SIGTERM', () => { cleanup(); process.exit(0); });
+
+  return httpServer;
+}
+
+// ── Shared session (one agent, all clients see everything) ────────────────────
+
+function createSharedSession(defaultModel, defaultMode) {
+  let model           = defaultModel;
+  let mode            = defaultMode;
+  let thinking        = false;
+  let confirmResolver = null;
+  let extThinking     = false;
+  let thinkingBudget  = 10000;
+  let systemOverride  = '';
+  let goal            = null;
+  let goalActive      = false;
+  let lastUserMsg     = '';
+  let tokens          = { total: 0, input: 0, output: 0 };
+  let displayMessages = [];
+
+  const MAX_GOAL_ITERS = 25;
+  const THINKING_WORDS = ['baking','brewing','conjuring','weaving','crafting',
+                          'simmering','forging','hatching','distilling','wrangling',
+                          'cooking up','scheming','assembling','calibrating','synthesizing',
+                          'plotting','whittling','ruminating','percolating','manifesting',
+                          'untangling','chiseling','mulling','marinating','decoding',
+                          'reverse-engineering','daydreaming','noodling','spelunking','simulating',
+                          'hallucinating productively','connecting dots','running the numbers','vibing'];
+
+  // ── Client set ──────────────────────────────────────────────────────────────
+
+  const clients = new Set();
+
+  function broadcast(data) {
+    const json = JSON.stringify(data);
+    for (const c of clients) {
+      if (c.readyState === 1 /* OPEN */) c.send(json);
+    }
+  }
+
+  function sendTo(ws, data) {
+    if (ws.readyState === 1) ws.send(JSON.stringify(data));
+  }
+
+  function pickWord() {
+    return THINKING_WORDS[Math.floor(Math.random() * THINKING_WORDS.length)];
+  }
+
+  function pushDisplay(msg) {
+    displayMessages.push(msg);
+    broadcast({ type: 'message', msg });
+  }
+
+  function broadcastStatus() {
+    broadcast({ type: 'status', model, mode, tokens, goal, extThinking, thinkingBudget });
+  }
+
+  // ── Agent (shared across all clients) ──────────────────────────────────────
+
+  const agent = new Agent({
+    modelAlias: model,
+    mode,
+    onTokens: (t) => { tokens = t; broadcast({ type: 'tokens', ...t }); },
+    onStreamChunk: (chunk) => broadcast({ type: 'stream_chunk', content: chunk }),
+    onStreamEnd:   ()      => broadcast({ type: 'stream_end' }),
+    onToolCall: ({ name, input, id }) => {
+      const msg = { type: 'tool', id, name, input, output: null, success: null, pending: true };
+      displayMessages.push(msg);
+      broadcast({ type: 'tool_call', id, name, input });
+    },
+    onToolResult: ({ name, output, success, diff }) => {
+      for (let i = displayMessages.length - 1; i >= 0; i--) {
+        if (displayMessages[i].type === 'tool' && displayMessages[i].name === name && displayMessages[i].pending) {
+          displayMessages[i] = { ...displayMessages[i], output, success, pending: false, diff: diff || null };
+          break;
+        }
+      }
+      broadcast({ type: 'tool_result', name, output, success, diff });
+    },
+    onMessage: ({ role, content, label }) => {
+      const type = role;
+      const msg = { type, content, label };
+      if (role !== 'thinking') displayMessages.push(msg);
+      broadcast({ type: 'message', msg });
+    },
+    onNotify: (n) => {
+      if (n.type === 'agent-msg') {
+        const msg = { type: 'agent-msg', from: n.from, to: n.to, content: n.content };
+        displayMessages.push(msg);
+        broadcast({ type: 'message', msg });
+      }
+    },
+  });
+
+  // ── Add a new client ────────────────────────────────────────────────────────
+
+  function addClient(ws) {
+    clients.add(ws);
+
+    ws.on('message', async (raw) => {
+      let msg;
+      try { msg = JSON.parse(raw.toString()); } catch { return; }
+
+      // Hello handshake — client identifies itself and gets full history
+      if (msg.type === 'hello') {
+        ws._clientType = msg.clientType || 'web';
+        sendTo(ws, {
+          type: 'welcome',
+          model, mode,
+          cwd: process.cwd(),
+          history: displayMessages,
+        });
+        broadcastStatus();
+        return;
+      }
+
+      // Confirm — first responder wins
+      if (msg.type === 'confirm') {
+        if (confirmResolver) {
+          const resolve = confirmResolver;
+          confirmResolver = null;
+          resolve(msg.answer);
+        }
+        return;
+      }
+
+      if (msg.type === 'submit') {
+        const input = (msg.content || '').trim();
+        if (!input) return;
+
+        if (thinking) {
+          sendTo(ws, { type: 'message', msg: { type: 'info', content: `Axion is still ${pickWord()}… try /btw for a side question.` } });
+          return;
+        }
+
+        if (input.startsWith('/')) {
+          await handleCommand(input, ws);
+          return;
+        }
+
+        // Normal chat — tag with source so all clients can show where it came from
+        lastUserMsg = input;
+        const clientType = ws._clientType || 'web';
+        const userMsg = { type: 'user', content: input, source: clientType };
+        displayMessages.push(userMsg);
+        broadcast({ type: 'message', msg: userMsg });
+        broadcast({ type: 'thinking_start', word: pickWord() });
+        thinking = true;
+
+        try {
+          await runAgent(input);
+        } catch (err) {
+          const errMsg = { type: 'error', content: err.message };
+          displayMessages.push(errMsg);
+          broadcast({ type: 'message', msg: errMsg });
+        } finally {
+          thinking = false;
+          confirmResolver = null;
+          broadcast({ type: 'thinking_end' });
+          broadcastStatus();
+        }
+      }
+    });
+
+    ws.on('close', () => clients.delete(ws));
+  }
+
+  // ── Run agent ───────────────────────────────────────────────────────────────
+
+  async function runAgent(message) {
+    const askConfirm = (tc) => new Promise((resolve) => {
+      confirmResolver = resolve;
+      broadcast({ type: 'confirm_request', kind: 'tool', tool: { name: tc.name, label: confirmLabel(tc.name, tc.input) } });
+    });
+    const askPlanConfirm = () => new Promise((resolve) => {
+      confirmResolver = resolve;
+      broadcast({ type: 'confirm_request', kind: 'plan' });
+    });
+
+    if (goal) {
+      goalActive = true;
+      for (let iter = 0; iter < MAX_GOAL_ITERS && goalActive; iter++) {
+        broadcastStatus();
+        const msg = iter === 0 ? message : 'Continue working on the goal.';
+        if (iter > 0) pushDisplay({ type: 'info', content: `── goal iteration ${iter + 1} ──` });
+        await agent.run(msg, { askConfirm, askPlanConfirm });
+        const hist = agent.history;
+        const last = [...hist].reverse().find((m) => m.role === 'assistant');
+        const lastText = typeof last?.content === 'string' ? last.content
+          : last?.content?.find?.((c) => c.type === 'text')?.text || '';
+        if (lastText.includes('GOAL_COMPLETE')) {
+          pushDisplay({ type: 'info', content: '✔ Goal complete.' });
+          goal = null; goalActive = false; agent.setGoal(null);
+          break;
+        }
+      }
+      if (goalActive) pushDisplay({ type: 'info', content: `Goal reached max iterations (${MAX_GOAL_ITERS}).` });
+      goalActive = false;
+    } else {
+      await agent.run(message, { askConfirm, askPlanConfirm });
+    }
+  }
+
+  // ── Slash commands ──────────────────────────────────────────────────────────
+  // ws param used for commands that only affect the requesting client (none currently)
+
+  async function handleCommand(input, _ws) {
+    const [cmd, ...args] = input.slice(1).trim().split(/\s+/);
+    const arg = args.join(' ');
+    const info  = (content) => pushDisplay({ type: 'info',  content });
+    const error = (content) => pushDisplay({ type: 'error', content });
+
+    switch (cmd.toLowerCase()) {
+      case 'help': info(HELP_TEXT); break;
+
+      case 'clear':
+        agent.clearHistory();
+        tokens = { total: 0, input: 0, output: 0 };
+        lastUserMsg = ''; displayMessages = [];
+        broadcast({ type: 'clear' });
+        broadcastStatus();
+        break;
+
+      case 'model':
+        if (!arg) { info(`current: ${model}  available: ${Object.keys(MODELS).join(' · ')}`); }
+        else { model = arg; agent.setModel(model); saveModel(model); info(`model → ${arg} (saved)`); broadcastStatus(); }
+        break;
+
+      case 'mode': {
+        // 'bypass' is the user-facing alias for 'auto'
+        const nm = arg === 'bypass' ? 'auto' : arg;
+        if (!['ask','plan','auto'].includes(nm)) { error(`unknown mode "${arg}" — use ask, plan, or bypass`); }
+        else { mode = nm; agent.setMode(nm); saveMode(nm); info(`mode → ${nm === 'auto' ? 'bypass' : nm} (saved)`); broadcastStatus(); }
+        break;
+      }
+
+      case 'api': {
+        const [apiTarget, apiKey] = args;
+        if (!apiTarget || !apiKey) { error('usage: /api <model> <key>'); break; }
+        try { const p = setApiKey(apiTarget, apiKey); saveApiKey(p, apiKey); info(`API key set for ${p} (saved)`); }
+        catch (err) { error(err.message); }
+        break;
+      }
+
+      case 'thinking': {
+        if (!arg || arg === 'off') { extThinking = false; agent.setThinking(false); info('Extended thinking off.'); }
+        else if (arg === 'on')    { extThinking = true;  agent.setThinking(true, thinkingBudget); info(`Extended thinking on (budget: ${thinkingBudget.toLocaleString()} tokens)`); }
+        else {
+          const budget = parseInt(arg, 10);
+          if (isNaN(budget) || budget < 1000) { error('usage: /thinking [on|off|<tokens>]'); break; }
+          extThinking = true; thinkingBudget = budget; agent.setThinking(true, budget);
+          info(`Extended thinking on (budget: ${budget.toLocaleString()} tokens)`);
+        }
+        broadcastStatus(); break;
+      }
+
+      case 'system':
+        if (!arg) { info(systemOverride ? `Current: ${systemOverride}\n\nUse /system clear to remove.` : 'No system override set.'); }
+        else if (arg === 'clear') { systemOverride = ''; agent.setSystemOverride(''); info('System override cleared.'); }
+        else { systemOverride = arg; agent.setSystemOverride(arg); info(`System override set: ${arg}`); }
+        break;
+
+      case 'goal':
+        if (!arg) {
+          if (goal) { goalActive = false; goal = null; agent.setGoal(null); info('Goal cancelled.'); }
+          else info('No active goal. Usage: /goal <description>');
+        } else {
+          goal = arg; agent.setGoal(arg);
+          info(`Goal set: "${arg}"\nAxion will work autonomously until this is achieved (max ${MAX_GOAL_ITERS} iterations).`);
+        }
+        broadcastStatus(); break;
+
+      case 'retry': {
+        if (!lastUserMsg) { info('Nothing to retry yet.'); break; }
+        const h = agent.history;
+        const li = [...h].reverse().findIndex((m) => m.role === 'user');
+        if (li !== -1) agent.history = h.slice(0, h.length - 1 - li);
+        info(`↩ Retrying: "${lastUserMsg}"`);
+        const rm = { type: 'user', content: lastUserMsg };
+        displayMessages.push(rm); broadcast({ type: 'message', msg: rm });
+        broadcast({ type: 'thinking_start', word: 'retrying' }); thinking = true;
+        try { await runAgent(lastUserMsg); }
+        catch (err) { broadcast({ type: 'message', msg: { type: 'error', content: err.message } }); }
+        finally { thinking = false; broadcast({ type: 'thinking_end' }); broadcastStatus(); }
+        break;
+      }
+
+      case 'compact':
+        if (!agent.history?.length) { info('Nothing to compact yet.'); break; }
+        info('Compacting history…');
+        broadcast({ type: 'thinking_start', word: 'compressing' });
+        try { const s = await agent.compact(); info(`✔ Compacted. Summary:\n${s}`); }
+        catch (err) { error(`Compact failed: ${err.message}`); }
+        finally { broadcast({ type: 'thinking_end' }); }
+        break;
+
+      case 'undo': {
+        const r = undoLastBackup();
+        if (r) info(`↩ Restored: ${r}  (${undoStackSize()} more available)`);
+        else info('Nothing to undo.');
+        break;
+      }
+
+      case 'remember':
+        if (!arg) {
+          const ms = getMemories();
+          if (!ms.length) { info('No memories saved. Use /remember <text> to add one.'); break; }
+          info(`Persistent notes (${ms.length}):\n${ms.map((m,i) => `  ${i+1}. ${m.text}`).join('\n')}\n\nUse /forget <number> to remove one.`);
+        } else { const l = addMemory(arg); info(`Remembered: "${arg}"  (${l.length} total)`); }
+        break;
+
+      case 'forget': {
+        const idx = parseInt(arg, 10) - 1;
+        if (isNaN(idx)) { error('usage: /forget <number>'); break; }
+        const ms = getMemories();
+        if (idx < 0 || idx >= ms.length) { error(`No memory #${idx+1}.`); break; }
+        const removed = ms[idx].text; removeMemory(idx); info(`Forgotten: "${removed}"`);
+        break;
+      }
+
+      case 'save':
+        if (!arg) { error('usage: /save <chatname>'); break; }
+        saveChat(arg, { model, mode, tokenCount: tokens.total, agentHistory: agent.history || [], displayMessages });
+        info(`Chat saved as "${arg}".`);
+        break;
+
+      case 'resume': {
+        if (!arg) {
+          const chats = listChats();
+          if (!chats.length) { info('No saved chats. Use /save <chatname> to save one.'); break; }
+          info(`Saved chats:\n${chats.map(c => `  ${c.name.padEnd(20)} ${(c.model||'?').padEnd(14)} ${c.savedAt ? new Date(c.savedAt).toLocaleString() : '?'}`).join('\n')}\n\nUse /resume <chatname> to load one.`);
+          break;
+        }
+        const chat = loadChat(arg);
+        if (!chat) { error(`No saved chat named "${arg}".`); break; }
+        agent.history = chat.agentHistory || [];
+        model = chat.model || model; mode = chat.mode || mode;
+        tokens = { total: chat.tokenCount || 0, input: 0, output: chat.tokenCount || 0 };
+        agent.setModel(model); agent.setMode(mode);
+        displayMessages = chat.displayMessages || [];
+        broadcast({ type: 'resume', model, mode, messages: displayMessages });
+        broadcastStatus();
+        break;
+      }
+
+      case 'remove-chat':
+        if (!arg) { error('usage: /remove-chat <chatname>'); break; }
+        if (deleteChat(arg)) info(`Chat "${arg}" deleted.`); else error(`No saved chat named "${arg}".`);
+        break;
+
+      case 'models': {
+        const built = Object.entries(MODELS).map(([a,id]) => `  ${a.padEnd(22)} ${id}`).join('\n');
+        const custom = Object.entries(CUSTOM_ENDPOINTS);
+        info(`Available models:\n${built}${custom.length ? '\n\nCustom:\n'+custom.map(([n,e])=>`  ${n.padEnd(22)} ${e.model}  ${e.baseURL}`).join('\n') : ''}`);
+        break;
+      }
+
+      case 'history': {
+        if (!arg) { error('usage: /history <query>'); break; }
+        const q = arg.toLowerCase();
+        const hits = displayMessages.filter(m => (m.type==='user'||m.type==='assistant') && typeof m.content==='string' && m.content.toLowerCase().includes(q));
+        if (!hits.length) { info(`No messages found containing "${arg}".`); break; }
+        info(`${hits.length} match(es) for "${arg}":\n${hits.slice(-8).map(m=>`  [${m.type}] ${m.content.trim().slice(0,120).replace(/\n/g,' ')}`).join('\n')}`);
+        break;
+      }
+
+      case 'btw':
+        if (!arg) { error('usage: /btw <question>'); break; }
+        pushDisplay({ type: 'user', content: `btw: ${arg}` });
+        broadcast({ type: 'thinking_start', word: 'checking' });
+        try { const a = await agent.askBtw(arg); pushDisplay({ type: 'btw', content: a }); }
+        catch (err) { error(`btw failed: ${err.message}`); }
+        finally { broadcast({ type: 'thinking_end' }); }
+        break;
+
+      case 'endpoint': {
+        const [f,s,t,fo] = args;
+        if (!f) {
+          const es = Object.entries(CUSTOM_ENDPOINTS);
+          if (!es.length) info(`No custom endpoints.\n\nUsage: /endpoint <name> <url> [model] [key]`);
+          else info(`Saved endpoints:\n${es.map(([n,e])=>`  ${n.padEnd(16)} ${e.baseURL}  model: ${e.model}`).join('\n')}`);
+          break;
+        }
+        let epName, epURL, epModel, epKey;
+        if (f.startsWith('http')) { epName='other'; epURL=f; epModel=s; epKey=t; }
+        else { epName=f; epURL=s; epModel=t; epKey=fo; }
+        if (!epURL) { const ep=CUSTOM_ENDPOINTS[epName]; if(ep) info(`${epName}: ${ep.baseURL}\n  model: ${ep.model}`); else error(`No endpoint named "${epName}".`); break; }
+        CUSTOM_ENDPOINTS[epName] = { baseURL: epURL, model: epModel||CUSTOM_ENDPOINTS[epName]?.model||epName, apiKey: epKey||CUSTOM_ENDPOINTS[epName]?.apiKey||'no-key' };
+        saveCustomEndpoints({ ...CUSTOM_ENDPOINTS });
+        model = epName; agent.setModel(epName); saveModel(epName);
+        info(`Endpoint "${epName}" saved → ${CUSTOM_ENDPOINTS[epName].baseURL}\nSwitched to "${epName}"`);
+        broadcastStatus(); break;
+      }
+
+      case 'img-gen': {
+        if (!arg) { error('usage: /img-gen <prompt>'); break; }
+        broadcast({ type: 'thinking_start', word: 'painting' });
+        try {
+          const { b64, filePath, revisedPrompt, model: imgModel } = await generateImage(arg);
+          const display = revisedPrompt !== arg ? `\nRevised prompt: ${revisedPrompt}` : '';
+          // Push image as a renderable message for the web
+          const imgMsg = { type: 'img', b64, filePath, prompt: arg, revisedPrompt, model: imgModel };
+          displayMessages.push(imgMsg);
+          broadcast({ type: 'message', msg: imgMsg });
+          info(`◈ Image generated with ${imgModel}${display}\n  Saved to: ${filePath}`);
+        } catch (err) {
+          error(`Image generation failed: ${err.message}`);
+        } finally {
+          broadcast({ type: 'thinking_end' });
+        }
+        break;
+      }
+
+      case 'img-gen-model': {
+        if (!arg) {
+          info(`Image model: ${IMAGE_GEN_MODEL.current}\n  Available: dall-e-3  dall-e-2  gpt-image-1\n  Usage: /img-gen-model <model>`);
+          break;
+        }
+        IMAGE_GEN_MODEL.current = arg;
+        saveImageModel(arg);
+        info(`Image model → ${arg} (saved)`);
+        break;
+      }
+
+      default: error(`unknown command /${cmd} — type /help`);
+    }
+  }
+
+  return { addClient };
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function confirmLabel(name, input) {
+  if (!input) return '';
+  switch (name) {
+    case 'read_file': case 'write_file': case 'patch_file': case 'delete_file': return input.path || '';
+    case 'move_file':      return `${input.from} → ${input.to}`;
+    case 'list_directory': return input.path || '.';
+    case 'run_command':    return `\`${(input.command||'').slice(0,60)}\``;
+    case 'git_commit':     return `"${(input.message||'').slice(0,50)}"`;
+    case 'web_search':     return `"${(input.query||'').slice(0,60)}"`;
+    case 'fetch_url':      return input.url || '';
+    default: return '';
+  }
+}
+
+const HELP_TEXT = `Commands
+──────────────────────────────────────────────────
+/help                           this screen
+/model <name|id>                switch model
+/mode  <name>                   ask · plan · bypass  (click mode in status bar to cycle)
+/api   <model> <key>            set API key (saved)
+/endpoint <name> <url> [model] [key]  custom endpoint
+/thinking [on|off|<tokens>]     extended thinking
+/img-gen <prompt>               generate an image (OpenAI)
+/img-gen-model [model]          set/show image model (dall-e-3, dall-e-2, gpt-image-1)
+/remember <text>                save a persistent note
+/forget <index>                 remove a saved note
+/models                         list all models
+/history <query>                search message history
+/system [text]                  extra system instructions
+/goal <description>             autonomous goal mode
+/retry                          re-run last message
+/compact                        compress history
+/btw <question>                 quick side question
+/save <name>                    save current chat
+/resume <name>                  resume a saved chat
+/remove-chat <name>             delete a saved chat
+/undo                           restore last overwritten file
+/clear                          clear history`;
+
+// Run when invoked directly: node src/web/server.js
+import { pathToFileURL } from 'url';
+const _isMain = process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url;
+if (_isMain) start();

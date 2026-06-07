@@ -1,0 +1,40 @@
+{
+  "name": "axion-cli",
+  "version": "1.0.0",
+  "description": "Axion by Axion Labs — terminal AI coding agent",
+  "type": "module",
+  "bin": {
+    "axion":         "./dist/axion.js",
+    "axion-serve":   "./src/web/server.js",
+    "axion-blender": "./mcp-servers/blender/index.js"
+  },
+  "scripts": {
+    "build": "node build.js",
+    "build-web": "node build-web.js",
+    "prepare": "node build.js",
+    "start": "node dist/axion.js",
+    "dev": "node build.js && node dist/axion.js",
+    "web": "node build-web.js && node src/web/server.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "chalk": "^5.3.0",
+    "dotenv": "^16.4.5",
+    "ink": "^5.0.1",
+    "ink-spinner": "^5.0.0",
+    "minimist": "^1.2.8",
+    "node-fetch": "^3.3.2",
+    "openai": "^4.77.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.24.0",
+    "@babel/preset-react": "^7.23.3",
+    "esbuild": "^0.28.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
