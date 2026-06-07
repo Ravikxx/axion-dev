@@ -18,7 +18,7 @@ const WEB_SERVER = join(_cliDir, '../src/web/server.js');
 
 const argv = minimist(process.argv.slice(2), {
   string: ['model', 'mode'],
-  boolean: ['no-link'],
+  boolean: ['link'],
   alias: { m: 'model', M: 'mode' },
 });
 
@@ -87,7 +87,7 @@ const port    = Number(process.env.AXION_WEB_PORT) || 3000;
 const wsUrl   = `ws://localhost:${port}`;
 
 async function serverIsAlive() {
-  if (argv['no-link']) return false;
+  if (!argv['link']) return false;
   if (!existsSync(pidFile)) return false;
   return new Promise((resolve) => {
     const ws = new WebSocket(wsUrl);
