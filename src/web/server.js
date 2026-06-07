@@ -364,8 +364,10 @@ function createSharedSession(defaultModel, defaultMode) {
     if (currentChatName) {
       try {
         saveChat(currentChatName, { model, mode, tokenCount: tokens.total, agentHistory: agent.history || [], displayMessages });
-        broadcast({ type: 'chats_list', chats: listChats() });
-      } catch {}
+      } catch (err) {
+        console.error('[autoSave] saveChat failed:', err.message);
+      }
+      broadcast({ type: 'chats_list', chats: listChats() });
     }
   }
 

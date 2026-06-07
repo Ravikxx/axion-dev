@@ -420,6 +420,10 @@ export default function App() {
 
         case 'thinking_end':
           setThinking(false); setThinkingWord('');
+          // Always refresh sidebar after a response so auto-saved chats appear
+          if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({ type: 'list_chats' }));
+          }
           break;
 
         case 'confirm_request':
