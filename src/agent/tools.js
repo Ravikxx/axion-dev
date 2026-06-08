@@ -12,7 +12,7 @@ import { getOAuthToken } from '../oauth/oauth.js';
 
 import { join } from 'path';
 
-const cwd = process.cwd();
+let cwd = process.cwd();
 
 function relPath(p) { return relative(cwd, resolve(cwd, p)) || '.'; }
 
@@ -481,6 +481,14 @@ export async function executeTool(name, input, { agentLabel = 'main', onNotify =
       }
 
       case 'run_command': {
+        // Intercept `cd <path>` so the working directory persists across calls.
+        const cdMatch = input.command.trim().match(/^cd\s+(.+)$/);
+        if (cdMatch) {
+          const target = resolve(cwd, cdMatch[1].trim());
+          if (!existsSync(target)) return { success: false, output: `cd: no such directory: ${target}` };
+          cwd = target;
+          return { success: true, output: `(cwd → ${cwd})` };
+        }
         const result = execSync(input.command, { cwd, encoding: 'utf8', timeout: 30000, stdio: ['pipe', 'pipe', 'pipe'] });
         return { success: true, output: result || '(no output)' };
       }

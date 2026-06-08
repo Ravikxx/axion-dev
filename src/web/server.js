@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createServer } from 'http';
-import { readFileSync, writeFileSync, unlinkSync } from 'fs';
+import { readFileSync, writeFileSync, unlinkSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { fileURLToPath } from 'url';
@@ -91,7 +91,7 @@ export function start({ initialModel = getSavedModel() || DEFAULT_MODEL, initial
   const schedulerTimer = startScheduler();
 
   httpServer.listen(PORT, () => {
-    try { writeFileSync(PID_FILE, String(process.pid), 'utf8'); } catch {}
+    try { mkdirSync(dirname(PID_FILE), { recursive: true }); writeFileSync(PID_FILE, String(process.pid), 'utf8'); } catch {}
     console.log(`\n  ◈ Axion web UI  →  http://localhost:${PORT}\n`);
     console.log(`  Working directory: ${process.cwd()}`);
     console.log(`  Press Ctrl+C to stop  (or /web stop in the CLI).\n`);

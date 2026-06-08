@@ -184,17 +184,17 @@ function WelcomeBanner({ model, mode }) {
   const modeColor  = MODE_COLORS[mode] || 'cyan';
   const isFirstRun = model === 'veil' && !getMemories().length;
   return (
-    <Box flexDirection="column" marginBottom={1} borderStyle="round" borderColor="gray" paddingX={2} paddingY={0}>
+    <Box flexDirection="column" marginBottom={1} borderStyle="round" borderColor="#cc785c" paddingX={2} paddingY={0}>
       <Box gap={4}>
         {/* Left column */}
         <Box flexDirection="column" minWidth={28}>
           <Box gap={1} marginBottom={0}>
-            <Text color="blueBright" bold>◈ Axion</Text>
+            <Text color="#cc785c" bold>✻ Axion</Text>
             <Text color="gray" dimColor>by Axion Labs</Text>
           </Box>
           <Box gap={1} marginLeft={2}>
             <Text color="gray" dimColor>model </Text>
-            <Text color="cyan">{model}</Text>
+            <Text color="#cc785c">{model}</Text>
           </Box>
           <Box gap={1} marginLeft={2}>
             <Text color="gray" dimColor>mode  </Text>
@@ -1351,10 +1351,36 @@ export function App({
 
           // /web stop
           if (args[0] === 'stop') {
+            const webPort = Number(process.env.AXION_WEB_PORT) || 3000;
+
             if (!existsSync(pidFile)) {
-              pushStatic({ type: 'info', content: 'No web server appears to be running.' });
+              // PID file missing — try to kill by port as fallback
+              try {
+                const { execSync: es } = await import('child_process');
+                if (process.platform === 'win32') {
+                  const out = es(`netstat -ano -p TCP 2>nul | findstr :${webPort}`, { encoding: 'utf8', stdio: ['pipe','pipe','pipe'] });
+                  const match = out.match(/\s+(\d+)\s*$/m);
+                  if (match) {
+                    es(`taskkill /F /PID ${match[1]}`, { stdio: 'ignore' });
+                    pushStatic({ type: 'info', content: `◈ Web server stopped (PID ${match[1]} on port ${webPort}).` });
+                  } else {
+                    pushStatic({ type: 'info', content: 'No web server appears to be running.' });
+                  }
+                } else {
+                  const pid = es(`lsof -ti tcp:${webPort}`, { encoding: 'utf8' }).trim();
+                  if (pid) {
+                    process.kill(parseInt(pid, 10));
+                    pushStatic({ type: 'info', content: `◈ Web server stopped (PID ${pid}).` });
+                  } else {
+                    pushStatic({ type: 'info', content: 'No web server appears to be running.' });
+                  }
+                }
+              } catch {
+                pushStatic({ type: 'info', content: 'No web server appears to be running.' });
+              }
               return true;
             }
+
             try {
               const pid = parseInt(readFileSync(pidFile, 'utf8').trim(), 10);
               process.kill(pid);
