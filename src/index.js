@@ -11,6 +11,7 @@ import { LinkedApp } from './ui/LinkedApp.jsx';
 import { DEFAULT_MODEL, DEFAULT_MODE, API_KEYS, CUSTOM_ENDPOINTS, IMAGE_GEN_MODEL } from './config.js';
 import { getSavedModel, getSavedMode, getSavedApiKeys, getSavedCustomEndpoints, getSavedImageModel } from './persist.js';
 import { MCP } from './agent/mcp.js';
+import { runDoctor } from './doctor.js';
 
 // Resolve the web server path relative to this bundle so /web and axion-serve work
 const _cliDir    = dirname(fileURLToPath(import.meta.url));
@@ -18,9 +19,14 @@ const WEB_SERVER = join(_cliDir, '../src/web/server.js');
 
 const argv = minimist(process.argv.slice(2), {
   string: ['model', 'mode'],
-  boolean: ['link'],
+  boolean: ['link', 'doctor'],
   alias: { m: 'model', M: 'mode' },
 });
+
+if (argv.doctor) {
+  runDoctor();
+  process.exit(0);
+}
 
 const savedModel = getSavedModel();
 const savedMode  = getSavedMode();
