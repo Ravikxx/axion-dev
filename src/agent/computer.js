@@ -245,6 +245,50 @@ Write-Output "$($screen.Width)x$($screen.Height)"
   }
 }
 
+// Draw a labeled coordinate grid onto an image file using ImageMagick.
+// logW/logH are the logical (click-coordinate) dimensions; the image may be
+// larger on HiDPI/Retina displays — identify resolves the actual size.
+function annotateWithImageMagick(imgPath, logW, logH) {
+  const outPath = imgPath.replace('.png', '-ann.png');
+
+  let imgW = logW, imgH = logH;
+  try {
+    const dims = execSync(`identify -format "%wx%h" "${imgPath}"`, { encoding: 'utf8', timeout: 3000 }).trim();
+    const [w, h] = dims.split('x').map(Number);
+    if (w && h) { imgW = w; imgH = h; }
+  } catch {}
+
+  const sx = imgW / logW;
+  const sy = imgH / logH;
+  const fs = Math.max(11, Math.round(11 * Math.min(sx, sy)));
+  const cw = Math.round(fs * 0.65); // approx char width for label box sizing
+
+  const draws = [];
+  for (let p = 5; p < 100; p += 5) {
+    const lx = Math.round(logW * p / 100);
+    const ly = Math.round(logH * p / 100);
+    const px = Math.round(lx * sx);
+    const py = Math.round(ly * sy);
+    const major = p % 10 === 0;
+    draws.push(`-stroke "rgba(255,60,60,${major ? '0.7' : '0.4'})" -strokewidth ${major ? 2 : 1} ` +
+               `-draw "line ${px},0 ${px},${imgH}" -draw "line 0,${py} ${imgW},${py}"`);
+    if (major) {
+      const xl = String(lx), yl = String(ly);
+      draws.push(
+        `-fill "rgba(0,0,0,0.75)" -draw "rectangle ${px+1},1 ${px+xl.length*cw+4},${fs+5}" ` +
+        `-fill yellow -pointsize ${fs} -draw "text ${px+2},${fs+2} '${xl}'"`,
+        `-fill "rgba(0,0,0,0.75)" -draw "rectangle 1,${py+1} ${yl.length*cw+4},${py+fs+5}" ` +
+        `-fill yellow -pointsize ${fs} -draw "text 2,${py+fs+2} '${yl}'"`,
+      );
+    }
+  }
+  // Corner anchor
+  draws.push(`-fill "rgba(0,0,0,0.75)" -draw "rectangle 1,1 38,${fs+5}" -fill yellow -pointsize ${fs} -draw "text 2,${fs+2} '0,0'"`);
+
+  execSync(`convert "${imgPath}" ${draws.join(' ')} "${outPath}"`, { timeout: 15000 });
+  return outPath;
+}
+
 // Annotated screenshot — overlays a labeled grid every 5% so the vision model
 // has dense reference markers when locating elements for click_on.
 // "0%" labels at all four edges anchor the coordinate space.
@@ -309,7 +353,32 @@ Write-Output "$W x $H"
     return { base64: data.toString('base64'), mediaType: 'image/png', width: w || 0, height: h || 0 };
 
   } else {
-    return captureScreen();
+    // Linux / macOS: annotate with ImageMagick if available, else plain screenshot
+    const hasConvert = (() => {
+      try { execSync('which convert', { stdio: 'ignore', timeout: 1000 }); return true; } catch { return false; }
+    })();
+    if (!hasConvert) return captureScreen();
+
+    const { width: logW, height: logH } = getScreenSize();
+    const imgPath = join(tmpdir(), `axion-screen-${Date.now()}.png`);
+
+    if (process.platform === 'darwin') {
+      execSync(`screencapture -x "${imgPath}"`, { timeout: 5000 });
+    } else {
+      execSync(`scrot "${imgPath}"`, { timeout: 5000 });
+    }
+
+    try {
+      const annPath = annotateWithImageMagick(imgPath, logW || 1920, logH || 1080);
+      const data = readFileSync(annPath);
+      try { unlinkSync(annPath); } catch {}
+      return { base64: data.toString('base64'), mediaType: 'image/png', width: logW, height: logH };
+    } catch {
+      const data = readFileSync(imgPath);
+      return { base64: data.toString('base64'), mediaType: 'image/png', width: logW, height: logH };
+    } finally {
+      try { unlinkSync(imgPath); } catch {}
+    }
   }
 }
 
@@ -333,9 +402,19 @@ for ($i = 0; $i -lt ${count}; $i++) {
     runPowerShell(script);
 
   } else if (process.platform === 'darwin') {
-    for (let i = 0; i < count; i++) {
-      execSync(`osascript -e 'tell application "System Events" to click at {${xi}, ${yi}}'`, { timeout: 5000 });
+    if (count === 2) {
+      // Try cliclick first — it fires a native double-click within the OS threshold
+      try { execSync(`cliclick dc:${xi},${yi}`, { timeout: 3000 }); return; } catch {}
     }
+    // Single osascript invocation so all clicks happen within the double-click time window
+    const lines = [];
+    for (let i = 0; i < count; i++) {
+      lines.push(`click at {${xi}, ${yi}}`);
+      if (i < count - 1) lines.push('delay 0.05');
+    }
+    const tmp = join(tmpdir(), `axion-click-${Date.now()}.scpt`);
+    writeFileSync(tmp, `tell application "System Events"\n${lines.join('\n')}\nend tell`);
+    try { execSync(`osascript "${tmp}"`, { timeout: 5000 }); } finally { try { unlinkSync(tmp); } catch {} }
 
   } else {
     const btn = button === 'right' ? 3 : button === 'middle' ? 2 : 1;
@@ -373,6 +452,47 @@ Start-Sleep -Milliseconds 150
   }
 }
 
+// macOS key codes for non-printable keys (used with `key code N using {mod down}`)
+const MAC_KEY_CODES = {
+  RETURN: 36, ENTER: 36, TAB: 48, SPACE: 49,
+  ESC: 53, ESCAPE: 53,
+  BACKSPACE: 51, BS: 51, DELETE: 51,
+  DEL: 117,
+  HOME: 115, END: 119,
+  PGUP: 116, PGDN: 121,
+  UP: 126, DOWN: 125, LEFT: 123, RIGHT: 124,
+  F1: 122, F2: 120, F3: 99,  F4: 118, F5: 96,
+  F6: 97,  F7: 98,  F8: 100, F9: 101, F10: 109, F11: 103, F12: 111,
+};
+
+// Parse Windows SendKeys string into AppleScript keystroke/key-code lines.
+// ^ maps to command (macOS convention), % to option, + to shift.
+function sendKeysToMacOS(keys) {
+  const lines = [];
+  let i = 0;
+  const mods = [];
+  while (i < keys.length) {
+    const ch = keys[i];
+    if (ch === '^') { mods.push('command down'); i++; continue; }
+    if (ch === '%') { mods.push('option down');  i++; continue; }
+    if (ch === '+') { mods.push('shift down');   i++; continue; }
+    const using = mods.length ? ` using {${mods.join(', ')}}` : '';
+    if (ch === '{') {
+      const close = keys.indexOf('}', i);
+      const name  = close === -1 ? '' : keys.slice(i + 1, close).toUpperCase();
+      const code  = MAC_KEY_CODES[name];
+      lines.push(code != null ? `key code ${code}${using}` : `keystroke "${name.toLowerCase()}"${using}`);
+      mods.length = 0;
+      i = close === -1 ? keys.length : close + 1;
+      continue;
+    }
+    lines.push(`keystroke "${ch.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"${using}`);
+    mods.length = 0;
+    i++;
+  }
+  return lines;
+}
+
 // Windows SendKeys format: ^c=Ctrl+C, %{F4}=Alt+F4, {ENTER}, {TAB}, {ESC}, {BACKSPACE}, +{TAB}=Shift+Tab
 export function pressKey(keys) {
   if (process.platform === 'win32') {
@@ -384,8 +504,11 @@ Add-Type -AssemblyName System.Windows.Forms
     runPowerShell(script);
 
   } else if (process.platform === 'darwin') {
-    const escaped = keys.replace(/"/g, '\\"');
-    execSync(`osascript -e 'tell application "System Events" to keystroke "${escaped}"'`, { timeout: 5000 });
+    const lines = sendKeysToMacOS(keys);
+    if (!lines.length) return;
+    const tmp = join(tmpdir(), `axion-key-${Date.now()}.scpt`);
+    writeFileSync(tmp, `tell application "System Events"\n${lines.join('\n')}\nend tell`);
+    try { execSync(`osascript "${tmp}"`, { timeout: 5000 }); } finally { try { unlinkSync(tmp); } catch {} }
 
   } else {
     execSync(`xdotool key ${sendKeysToX11(keys)}`, { timeout: 5000 });

@@ -2,11 +2,11 @@
 
 ## Computer use — cross-platform parity
 
-- [ ] **Annotated screenshots on Linux/macOS** — `captureScreenAnnotated()` falls back to a plain screenshot on non-Windows, losing the coordinate grid the agent uses to aim clicks. Need to draw the grid using ImageMagick (`convert`) or a Node canvas library (`@napi-rs/canvas`). Windows already does this via GDI+.
+- [x] **Annotated screenshots on Linux/macOS** — uses ImageMagick `convert` to draw a labeled grid (labels show logical pixel coords, handles Retina 2x via `identify`). Falls back to plain screenshot if `convert` is not installed.
 
-- [ ] **`pressKey` on macOS** — current implementation uses `osascript keystroke` which only works for printable characters, not key combos like Cmd+C or F-keys. Needs a proper key-code mapping using `osascript key code` with modifier flags, or `cliclick` key support.
+- [x] **`pressKey` on macOS** — now uses `key code N using {mod down}` for special keys and Cmd/Option/Shift combos. `^` maps to command, `%` to option, `+` to shift (macOS convention). Runs via a temp .scpt file to avoid escaping issues.
 
-- [ ] **`mouseClick` double-click on macOS** — `osascript click at {x, y}` doesn't accept a repeat count; the `times` parameter is ignored. Need to loop the osascript call or find an alternative.
+- [x] **`mouseClick` double-click on macOS** — uses `cliclick dc:x,y` for true double-click when available; falls back to a single osascript invocation with 50ms inter-click delay so the OS registers it within the double-click threshold.
 
 - [ ] **`ocrFindText()` on Linux/macOS** — currently Windows-only (uses Windows.Media.Ocr). Linux could use `tesseract` CLI; macOS has Vision framework via `osascript` or a small Swift helper.
 
@@ -22,7 +22,7 @@
 
 ## Tooling
 
-- [ ] **`axion --doctor` — MCP server health** — currently just lists configured servers from mcp.json. Could try spawning each server and checking it responds to a ping, reporting which ones are broken.
+- [x] **`axion --doctor` — MCP server health** — now spawns each configured server, sends an MCP `initialize` handshake, and reports ok/fail per server (3s timeout, all servers checked in parallel).
 
 - [x] **Auto-update check** — `axion --doctor` now compares local HEAD against remote via `git ls-remote` and prompts `axion --update` if behind.
 

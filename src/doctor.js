@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execSync, spawn } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { homedir, platform } from 'os';
@@ -111,20 +111,61 @@ function checkAxionDir() {
   else warn('No saved config yet — use /api, /model etc. inside Axion to persist settings');
 }
 
-function checkMcp() {
+function pingMcpServer(name, config) {
+  return new Promise((resolve, reject) => {
+    const { command, args = [], env = {} } = config;
+    const isWin  = process.platform === 'win32';
+    const cmd    = isWin ? 'cmd.exe' : command;
+    const cArgs  = isWin ? ['/c', command, ...args] : args;
+    let proc;
+    try {
+      proc = spawn(cmd, cArgs, { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ...env }, shell: false });
+    } catch (e) { return reject(new Error(e.message)); }
+
+    const timer = setTimeout(() => { proc.kill(); reject(new Error('timed out')); }, 3000);
+    let buf = '';
+    proc.stdout.on('data', (chunk) => {
+      buf += chunk.toString();
+      for (const line of buf.split('\n').slice(0, -1)) {
+        try {
+          const msg = JSON.parse(line.trim());
+          if (msg.id === 1 && msg.result) {
+            clearTimeout(timer);
+            proc.kill();
+            const toolCount = (msg.result.capabilities?.tools) ? ' (tools supported)' : '';
+            resolve(`ok${toolCount}`);
+          }
+        } catch {}
+      }
+      buf = buf.split('\n').slice(-1)[0];
+    });
+    proc.on('error', (e) => { clearTimeout(timer); reject(new Error(e.message)); });
+
+    proc.stdin.write(JSON.stringify({
+      jsonrpc: '2.0', id: 1, method: 'initialize',
+      params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'axion-doctor', version: '1.0' } },
+    }) + '\n');
+  });
+}
+
+async function checkMcp() {
   head('MCP');
   const mcpFile = join(homedir(), '.axion', 'mcp.json');
-  if (!existsSync(mcpFile)) {
-    warn('No MCP servers configured — use /mcp add or /mcp install');
-    return;
-  }
-  try {
-    const cfg = JSON.parse(readFileSync(mcpFile, 'utf8'));
-    const servers = Object.keys(cfg.mcpServers || cfg || {});
-    if (servers.length) ok(`${servers.length} server(s): ${servers.join(', ')}`);
-    else warn('mcp.json exists but no servers configured');
-  } catch {
-    warn('mcp.json found but could not parse it');
+  if (!existsSync(mcpFile)) { warn('No MCP servers configured — use /mcp add or /mcp install'); return; }
+
+  let cfg;
+  try { cfg = JSON.parse(readFileSync(mcpFile, 'utf8')); }
+  catch { warn('mcp.json found but could not parse it'); return; }
+
+  const servers = Object.entries(cfg.servers || cfg.mcpServers || cfg || {});
+  if (!servers.length) { warn('mcp.json exists but no servers configured'); return; }
+
+  const results = await Promise.allSettled(servers.map(([, c]) => pingMcpServer(c.command || c, c)));
+  for (let i = 0; i < servers.length; i++) {
+    const [name] = servers[i];
+    const r = results[i];
+    if (r.status === 'fulfilled') ok(`${name} — ${r.value}`);
+    else warn(`${name} — ${r.reason?.message || 'failed'}`);
   }
 }
 
@@ -147,7 +188,7 @@ function checkUpdates() {
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
-export function runDoctor() {
+export async function runDoctor() {
   process.stdout.write('\n\x1b[1m◈ Axion Doctor\x1b[0m\n');
   checkNode();
   checkApiKeys();
@@ -155,7 +196,7 @@ export function runDoctor() {
   checkComputerUse();
   checkWebServer();
   checkAxionDir();
-  checkMcp();
+  await checkMcp();
   checkUpdates();
   process.stdout.write('\n');
 }

@@ -56,7 +56,7 @@ Examples:
 }
 
 if (argv.doctor) {
-  runDoctor();
+  await runDoctor();
   process.exit(0);
 }
 
