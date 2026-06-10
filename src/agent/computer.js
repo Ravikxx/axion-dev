@@ -174,25 +174,95 @@ public class AxionGlow : Form {
 try { [AxionGlow]::ShowGlow() } catch { $_ | Out-File "$env:TEMP\\axion-overlay.log" -Append }
 `;
 
-export function showOverlay() {
-  if (process.platform !== 'win32' || _overlayProc) return;
-  try {
-    writeFileSync(OVERLAY_SCRIPT, OVERLAY_PS, 'utf8');
-    _overlayProc = spawn('powershell.exe', [
-      '-NonInteractive', '-STA', '-ExecutionPolicy', 'Bypass', '-File', OVERLAY_SCRIPT,
-    ], { stdio: ['ignore', 'pipe', 'pipe'], detached: false });
+const PYTHON_OVERLAY = `
+import sys, subprocess, os
+try:
+    import tkinter as tk
+    from math import sqrt
+except ImportError:
+    sys.exit(0)
 
-    const log = (d) => { try { writeFileSync(OVERLAY_LOG, d.toString(), { flag: 'a' }); } catch {} };
-    _overlayProc.stdout.on('data', log);
-    _overlayProc.stderr.on('data', log);
-    _overlayProc.on('exit', (code) => {
-      if (code !== 0 && code !== null) {
-        try { writeFileSync(OVERLAY_LOG, `exited ${code}\n`, { flag: 'a' }); } catch {}
-      }
-      _overlayProc = null;
-    });
-  } catch (err) {
-    try { writeFileSync(OVERLAY_LOG, err.message + '\n'); } catch {}
+root = tk.Tk()
+root.attributes('-fullscreen', True)
+root.attributes('-topmost', True)
+root.attributes('-alpha', 0.0)
+root.overrideredirect(True)
+root.configure(bg='black')
+root.wm_attributes('-transparentcolor', 'black')
+
+W = root.winfo_screenwidth()
+H = root.winfo_screenheight()
+S = min(W, H) // 3
+
+canvas = tk.Canvas(root, width=W, height=H, bg='black', highlightthickness=0)
+canvas.pack()
+
+# Corner glow: gradient ellipse drawn with concentric ovals, fading out
+COLOR = (232, 103, 10)  # amber
+
+def glow(cx, cy):
+    steps = 30
+    for i in range(steps, 0, -1):
+        r = S * i // steps
+        alpha = int(185 * (i / steps) ** 2)
+        hex_col = '#{:02x}{:02x}{:02x}'.format(
+            min(255, int(COLOR[0] * alpha / 255)),
+            min(255, int(COLOR[1] * alpha / 255)),
+            min(255, int(COLOR[2] * alpha / 255)),
+        )
+        canvas.create_oval(cx - r, cy - r, cx + r, cy + r, fill=hex_col, outline='')
+
+glow(0,   0)
+glow(W,   0)
+glow(0,   H)
+glow(W,   H)
+
+# Make click-through on Linux via xprop (best-effort)
+def set_clickthrough():
+    try:
+        wid = hex(root.winfo_id())
+        subprocess.run(['xprop', '-id', wid, '-f', '_NET_WM_WINDOW_TYPE', '32a',
+                        '-set', '_NET_WM_WINDOW_TYPE', '_NET_WM_WINDOW_TYPE_SPLASH'],
+                       capture_output=True, timeout=2)
+    except Exception:
+        pass
+
+root.after(200, set_clickthrough)
+root.mainloop()
+`;
+
+export function showOverlay() {
+  if (_overlayProc) return;
+
+  if (process.platform === 'win32') {
+    try {
+      writeFileSync(OVERLAY_SCRIPT, OVERLAY_PS, 'utf8');
+      _overlayProc = spawn('powershell.exe', [
+        '-NonInteractive', '-STA', '-ExecutionPolicy', 'Bypass', '-File', OVERLAY_SCRIPT,
+      ], { stdio: ['ignore', 'pipe', 'pipe'], detached: false });
+
+      const log = (d) => { try { writeFileSync(OVERLAY_LOG, d.toString(), { flag: 'a' }); } catch {} };
+      _overlayProc.stdout.on('data', log);
+      _overlayProc.stderr.on('data', log);
+      _overlayProc.on('exit', (code) => {
+        if (code !== 0 && code !== null) {
+          try { writeFileSync(OVERLAY_LOG, `exited ${code}\n`, { flag: 'a' }); } catch {}
+        }
+        _overlayProc = null;
+      });
+    } catch (err) {
+      try { writeFileSync(OVERLAY_LOG, err.message + '\n'); } catch {}
+    }
+
+  } else {
+    // Linux / macOS: Python tkinter corner-glow overlay
+    const pyPath = join(tmpdir(), 'axion-overlay.py');
+    try {
+      writeFileSync(pyPath, PYTHON_OVERLAY, 'utf8');
+      const py = process.platform === 'darwin' ? 'python3' : 'python3';
+      _overlayProc = spawn(py, [pyPath], { stdio: 'ignore', detached: false });
+      _overlayProc.on('exit', () => { _overlayProc = null; });
+    } catch {}
   }
 }
 
@@ -598,7 +668,58 @@ Add-Type -TypeDefinition @"${AXION_INPUT_CS}"@
 // Falls back to returning coordinates for a physical click if InvokePattern unavailable.
 // Returns { invoked: true } | { x, y } | null
 export function uiaClickElement(searchTerm) {
-  if (process.platform !== 'win32') return null;
+  if (process.platform === 'darwin') {
+    // macOS: search the frontmost app's UI tree via System Events accessibility API
+    const esc = searchTerm.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const script = `
+tell application "System Events"
+  set fp to first process whose frontmost is true
+  repeat with w in windows of fp
+    set allEls to every UI element of w
+    repeat with el in allEls
+      try
+        set nm to name of el
+        if nm is not missing value and nm contains "${esc}" then
+          set pos to position of el
+          set sz to size of el
+          return ((item 1 of pos) + (item 1 of sz) / 2) & "," & ((item 2 of pos) + (item 2 of sz) / 2)
+        end if
+      end try
+    end repeat
+  end repeat
+  return ""
+end tell
+`;
+    try {
+      const tmp = join(tmpdir(), `axion-uia-${Date.now()}.scpt`);
+      writeFileSync(tmp, script);
+      const out = execSync(`osascript "${tmp}"`, { encoding: 'utf8', timeout: 6000 }).trim();
+      try { unlinkSync(tmp); } catch {}
+      const m = out.match(/([\d.]+),\s*([\d.]+)/);
+      if (m) return { invoked: false, x: Math.round(parseFloat(m[1])), y: Math.round(parseFloat(m[2])), name: searchTerm };
+    } catch {}
+    return null;
+  }
+
+  if (process.platform !== 'win32') {
+    // Linux: use xdotool to find a window matching the search term
+    try {
+      const wid = execSync(`xdotool search --name "${searchTerm.replace(/"/g, '\\"')}" 2>/dev/null | head -1`, { encoding: 'utf8', timeout: 3000 }).trim();
+      if (!wid) return null;
+      const geo = execSync(`xdotool getwindowgeometry ${wid} 2>/dev/null`, { encoding: 'utf8', timeout: 2000 });
+      const pos = geo.match(/Position:\s*(\d+),(\d+)/);
+      const siz = geo.match(/Geometry:\s*(\d+)x(\d+)/);
+      if (pos && siz) {
+        return {
+          invoked: false,
+          x: Number(pos[1]) + Math.round(Number(siz[1]) / 2),
+          y: Number(pos[2]) + Math.round(Number(siz[2]) / 2),
+          name: searchTerm,
+        };
+      }
+    } catch {}
+    return null;
+  }
 
   const core = searchTerm
     .replace(/\b(the|a|an|on|in|at|of|icon|button|link|tab|window|app|application|desktop|taskbar|tray|menu|item)\b/gi, ' ')
@@ -679,9 +800,67 @@ if ($found) {
 
 // Uses the Windows built-in OCR engine (Windows.Media.Ocr) to find text on
 // screen and return its pixel center. Works without any external dependencies
-// on Windows 10/11. Returns { x, y } | null.
+// on Windows 10/11. On Linux/macOS uses tesseract (if installed).
+// Returns { x, y } | { error } | null.
 export function ocrFindText(searchTerm) {
-  if (process.platform !== 'win32') return null;
+  if (process.platform !== 'win32') {
+    // Linux/macOS: use tesseract hOCR output
+    try { execSync('which tesseract', { stdio: 'ignore', timeout: 1000 }); }
+    catch { return { error: 'tesseract not installed — run: sudo apt install tesseract-ocr  (Linux) or  brew install tesseract  (macOS)' }; }
+
+    const imgPath = join(tmpdir(), `axion-ocr-${Date.now()}.png`);
+    const ocrBase = imgPath.replace('.png', '');
+    const hocrPath = ocrBase + '.hocr';
+
+    try {
+      // Capture screen
+      if (process.platform === 'darwin') {
+        execSync(`screencapture -x "${imgPath}"`, { timeout: 5000 });
+      } else {
+        execSync(`scrot "${imgPath}"`, { timeout: 5000 });
+      }
+
+      // Run tesseract in hOCR mode
+      execSync(`tesseract "${imgPath}" "${ocrBase}" hocr 2>/dev/null`, { timeout: 15000 });
+
+      const hocr = readFileSync(hocrPath, 'utf8');
+      const needle = searchTerm.toLowerCase();
+
+      // Parse hOCR: <span class='ocrx_word' title='bbox x0 y0 x1 y1; ...' ...>word</span>
+      // Try multi-word phrase match across adjacent words first
+      const wordRe = /<span[^>]+class=['"]ocrx_word['"][^>]+title=['"]bbox\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)[^'"]*['"][^>]*>([^<]+)<\/span>/gi;
+      const words = [];
+      let wm;
+      while ((wm = wordRe.exec(hocr)) !== null) {
+        words.push({ x0: +wm[1], y0: +wm[2], x1: +wm[3], y1: +wm[4], text: wm[5].trim() });
+      }
+
+      // Slide a window over adjacent words to find phrase matches
+      const tokens = needle.split(/\s+/);
+      for (let i = 0; i <= words.length - tokens.length; i++) {
+        const chunk = words.slice(i, i + tokens.length);
+        const joined = chunk.map(w => w.text.toLowerCase()).join(' ');
+        if (joined.includes(needle) || tokens.every((t, j) => chunk[j].text.toLowerCase().includes(t))) {
+          const x = Math.round((chunk[0].x0 + chunk[chunk.length - 1].x1) / 2);
+          const y = Math.round((chunk[0].y0 + chunk[0].y1) / 2);
+          return { x, y };
+        }
+      }
+
+      // Single-word partial match fallback
+      for (const w of words) {
+        if (w.text.toLowerCase().includes(needle)) {
+          return { x: Math.round((w.x0 + w.x1) / 2), y: Math.round((w.y0 + w.y1) / 2) };
+        }
+      }
+    } catch (e) {
+      return { error: `OCR error: ${e.message}` };
+    } finally {
+      try { unlinkSync(imgPath); } catch {}
+      try { unlinkSync(hocrPath); } catch {}
+    }
+    return null;
+  }
 
   // Write the search term to a temp file to avoid PowerShell escaping issues.
   const termPath = join(tmpdir(), `axion-ocr-term-${Date.now()}.txt`);

@@ -8,15 +8,15 @@
 
 - [x] **`mouseClick` double-click on macOS** — uses `cliclick dc:x,y` for true double-click when available; falls back to a single osascript invocation with 50ms inter-click delay so the OS registers it within the double-click threshold.
 
-- [ ] **`ocrFindText()` on Linux/macOS** — currently Windows-only (uses Windows.Media.Ocr). Linux could use `tesseract` CLI; macOS has Vision framework via `osascript` or a small Swift helper.
+- [x] **`ocrFindText()` on Linux/macOS** — uses `tesseract` hOCR output; supports multi-word phrase matching and single-word partial fallback. Returns helpful install hint if tesseract is missing.
 
-- [ ] **`showOverlay()` on Linux/macOS** — coordinate overlay hint window is Windows-only. Linux could use a transparent GTK/Python window; macOS could use a Swift/AppleScript overlay.
+- [x] **`showOverlay()` on Linux/macOS** — Python+tkinter corner-glow overlay; tries to set `_NET_WM_WINDOW_TYPE_SPLASH` for click-through on X11. Silently skips if Python unavailable.
 
-- [ ] **`uiaClickElement()` on Linux/macOS** — UI Automation element finder is Windows-only. Linux has AT-SPI (`at-spi2`); macOS has Accessibility API via Swift. Both are significant work.
+- [x] **`uiaClickElement()` on Linux/macOS** — macOS uses System Events osascript to search the frontmost app's UI tree; Linux uses `xdotool search --name` to find windows by title and returns their center coords.
 
 ## CLI
 
-- [ ] **`/web` link mode in chat sessions** — `axion --link` currently only works when the web server is in code mode. Full bidirectional sync between CLI and web chat would be useful.
+- [x] **`/web` link mode in chat sessions** — removed the session-type gate; `axion --link` now works with both code and chat sessions. All events (stream, tools, confirm, etc.) were already handled by LinkedApp.
 
 - [x] **Streaming for OpenAI-compatible endpoints** — tightened the tool-error fallback condition so generic 400s (auth, model-not-found) from Ollama/LM Studio are no longer silently swallowed and now surface as real errors.
 

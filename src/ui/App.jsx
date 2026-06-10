@@ -42,6 +42,10 @@ const THINKING_WORDS = [
   'untangling', 'chiseling', 'mulling', 'marinating', 'decoding',
   'reverse-engineering', 'daydreaming', 'noodling', 'spelunking', 'simulating',
   'hallucinating productively', 'connecting dots', 'running the numbers', 'vibing',
+  'divining', 'transmuting', 'fermenting', 'excavating', 'theorizing',
+  'triangulating', 'rabbit-holing', 'stewing', 'summoning', 'tinkering',
+  'galaxy-brained', 'cross-referencing', 'deep-diving', 'unraveling', 'concocting',
+  'consulting the void', 'doing math', 'stargazing', 'philosophizing',
 ];
 
 const MODE_COLORS = { ask: 'cyan', plan: 'yellow', auto: 'greenBright', bypass: 'greenBright' };
