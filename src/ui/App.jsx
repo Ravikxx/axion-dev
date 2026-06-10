@@ -2109,7 +2109,7 @@ export function App({
   const ctxWindow   = getContextWindow(model);
   const gauge       = tokens.total > 0 ? contextGauge(tokens.total, ctxWindow) : null;
 
-  const hintLeft  = '/help for commands  · /goal to set a target  · /retry to redo  · Ctrl+P to cycle mode';
+  const hintLeft  = '/help for commands  · \\ + Enter for newline  · /retry to redo  · Ctrl+P to cycle mode';
   const hintRight = [
     extThinking  ? `◎ thinking(${(thinkingBudget / 1000).toFixed(0)}k)` : null,
     computerUse  ? `⊞ computer` : null,

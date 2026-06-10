@@ -27,6 +27,11 @@ export function InputBox({
       if (disabled) return;
 
       if (key.return) {
+        // Trailing backslash before the cursor → newline instead of submit
+        if (value[cursor - 1] === '\\') {
+          set(value.slice(0, cursor - 1) + '\n' + value.slice(cursor), cursor);
+          return;
+        }
         const trimmed = value.trim();
         if (!trimmed) return;
         setHistory((h) => [...h, trimmed]);
@@ -55,7 +60,19 @@ export function InputBox({
       if (key.leftArrow)  { setCursor((c) => Math.max(0, c - 1)); return; }
       if (key.rightArrow) { setCursor((c) => Math.min(value.length, c + 1)); return; }
 
+      // Up/down move between lines in a multi-line draft; otherwise browse history
+      const multiline = value.includes('\n');
+
       if (key.upArrow) {
+        if (multiline) {
+          const lineStart = value.lastIndexOf('\n', cursor - 1) + 1;
+          if (lineStart === 0) return; // already on first line
+          const col       = cursor - lineStart;
+          const prevStart = value.lastIndexOf('\n', lineStart - 2) + 1;
+          const prevLen   = lineStart - 1 - prevStart;
+          setCursor(prevStart + Math.min(col, prevLen));
+          return;
+        }
         if (!history.length) return;
         if (historyIdx === -1) setDraft(value); // save what's being typed
         const newIdx = Math.min(historyIdx + 1, history.length - 1);
@@ -66,6 +83,17 @@ export function InputBox({
       }
 
       if (key.downArrow) {
+        if (multiline) {
+          const lineEnd = value.indexOf('\n', cursor);
+          if (lineEnd === -1) return; // already on last line
+          const lineStart = value.lastIndexOf('\n', cursor - 1) + 1;
+          const col       = cursor - lineStart;
+          const nextStart = lineEnd + 1;
+          const nextEnd   = value.indexOf('\n', nextStart);
+          const nextLen   = (nextEnd === -1 ? value.length : nextEnd) - nextStart;
+          setCursor(nextStart + Math.min(col, nextLen));
+          return;
+        }
         if (historyIdx === -1) return;
         const newIdx = Math.max(historyIdx - 1, -1);
         const next = newIdx === -1 ? draft : history[history.length - 1 - newIdx] || '';
@@ -83,8 +111,12 @@ export function InputBox({
       if (key.ctrl) {
         switch (input) {
           case 'c': process.exit(0); return;
-          case 'a': setCursor(0); return;                              // start of line
-          case 'e': setCursor(value.length); return;                   // end of line
+          case 'a': setCursor(value.lastIndexOf('\n', cursor - 1) + 1); return; // start of line
+          case 'e': {                                                           // end of line
+            const e = value.indexOf('\n', cursor);
+            setCursor(e === -1 ? value.length : e);
+            return;
+          }
           case 'u': set('', 0); return;                                // clear line
           case 'k': set(value.slice(0, cursor), cursor); return;       // kill to end
           case 'w': {                                                  // delete word before cursor
@@ -101,7 +133,9 @@ export function InputBox({
 
       if (!key.meta && input) {
         if (historyIdx !== -1) setHistoryIdx(-1); // editing a recalled entry starts a new draft
-        set(value.slice(0, cursor) + input + value.slice(cursor), cursor + input.length);
+        // Pasted text arrives as one chunk; terminals send \r for its newlines
+        const text = input.replace(/\r\n?/g, '\n');
+        set(value.slice(0, cursor) + text + value.slice(cursor), cursor + text.length);
       }
     },
     { isActive }
@@ -117,8 +151,9 @@ export function InputBox({
       {value ? (
         <Text>
           <Text color="white">{value.slice(0, cursor)}</Text>
-          {!disabled && <Text inverse color="white">{value[cursor] ?? ' '}</Text>}
-          <Text color="white">{value.slice(cursor + 1)}</Text>
+          {/* Cursor on a newline renders as a block at end-of-line, keeping the \n */}
+          {!disabled && <Text inverse color="white">{value[cursor] === '\n' ? ' ' : value[cursor] ?? ' '}</Text>}
+          <Text color="white">{value[cursor] === '\n' ? value.slice(cursor) : value.slice(cursor + 1)}</Text>
         </Text>
       ) : (
         <Text>
