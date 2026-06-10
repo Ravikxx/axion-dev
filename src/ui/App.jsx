@@ -13,6 +13,7 @@ import {
   saveModel, saveMode, saveApiKey, saveCustomEndpoints, getCompareModels, saveCompareModels, searchChats,
   getAdviserModel, saveAdviserModel,
   saveChat, loadChat, listChats, deleteChat,
+  autosaveSession, clearLastSession,
   undoLastBackup, undoStackSize, exportChat,
   getMemories, addMemory, removeMemory,
   getSavedVisionModel, saveVisionModel,
@@ -258,6 +259,7 @@ export function App({
   initialThinkingBudget = 10000,
   webServerPath         = '',
   initialPrompt         = '',
+  initialResume         = null,
 }) {
   const { exit } = useApp();
   const [model, setModel]         = useState(initialModel);
@@ -300,6 +302,8 @@ export function App({
   // Session cost accumulator
   const [sessionCost, setSessionCost]   = useState(0);
   const prevTokRef                       = useRef({ input: 0, output: 0 });
+  const tokensRef                        = useRef({ total: 0, input: 0, output: 0 });
+  const compactWarnedRef                 = useRef(false);
 
   // Streaming state — separate from liveMessages to allow throttled updates
   const [streamContent, setStreamContent]  = useState(null); // null = not streaming
@@ -323,7 +327,16 @@ export function App({
     liveRef.current = [];
     setLiveMessages([]);
     if (live.length > 0) setStaticMessages((p) => [...p, ...live]);
-  }, []);
+    // Warn once when context usage crosses 85%
+    const pct = tokensRef.current.total / getContextWindow(model);
+    if (pct >= 0.85 && !compactWarnedRef.current) {
+      compactWarnedRef.current = true;
+      setStaticMessages((p) => [...p, {
+        type: 'info',
+        content: `⚠ Context ${Math.round(pct * 100)}% full — run /compact to summarize and free space.`,
+      }]);
+    }
+  }, [model]);
 
   // ── Init agent ─────────────────────────────────────────────────────────────
 
@@ -340,6 +353,7 @@ export function App({
       mode:       initialMode,
       onTokens: (t) => {
         const tok = typeof t === 'object' ? t : { total: t, input: 0, output: t };
+        tokensRef.current = tok;
         setTokens(tok);
         const di  = (tok.input  || 0) - prevTokRef.current.input;
         const dout = (tok.output || 0) - prevTokRef.current.output;
@@ -446,6 +460,48 @@ export function App({
     if (computerUse) showOverlay(); else hideOverlay();
   }, [computerUse]);
 
+  // Hydrate from `axion --continue` (last autosaved session). Runs once on mount,
+  // after the agent-init effect above so agentRef.current is available.
+  useEffect(() => {
+    if (!initialResume) return;
+    const chat = initialResume;
+    if (agentRef.current) {
+      agentRef.current.history     = chat.agentHistory || [];
+      agentRef.current.totalTokens = chat.tokenCount   || 0;
+    }
+    if (chat.model) setModel(chat.model);
+    if (chat.mode)  setMode(chat.mode);
+    setTokens({ total: chat.tokenCount || 0, input: 0, output: chat.tokenCount || 0 });
+    tokensRef.current = { total: chat.tokenCount || 0, input: 0, output: chat.tokenCount || 0 };
+    const date = chat.savedAt ? new Date(chat.savedAt).toLocaleString() : 'unknown';
+    setStaticMessages([
+      { type: '_banner', model: chat.model || initialModel, mode: chat.mode || initialMode },
+      { type: 'info', content: `── Continuing previous session (saved ${date}) ──` },
+      ...(chat.displayMessages || []),
+      { type: 'info', content: `── End of previous session — continuing from here ──` },
+    ]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Autosave the live session to a rolling slot for `axion --continue`. Debounced
+  // 1s after the message log settles so we capture end-of-turn state without
+  // clobbering the slot mid-stream. Skips empty sessions (nothing to restore).
+  const autosaveTimerRef = useRef(null);
+  useEffect(() => {
+    const history = agentRef.current?.history;
+    if (!history || history.length === 0) return;
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = setTimeout(() => {
+      const displayMsgs = staticMessages.filter((m) => m.type !== '_banner');
+      if (!displayMsgs.length) return;
+      autosaveSession({
+        model, mode, tokenCount: tokensRef.current.total,
+        agentHistory: history,
+        displayMessages: displayMsgs,
+      });
+    }, 1000);
+    return () => { if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current); };
+  }, [staticMessages, model, mode]);
+
   // Auto-submit prompt passed via CLI positional arg (e.g. axion "explain this")
   // Empty deps — runs once on mount. handleSubmit is referenced in the setTimeout
   // callback (not in the deps array) to avoid a temporal dead zone: handleSubmit
@@ -536,7 +592,10 @@ export function App({
           setTokens({ total: 0, input: 0, output: 0 });
           setSessionCost(0);
           prevTokRef.current = { input: 0, output: 0 };
+          tokensRef.current = { total: 0, input: 0, output: 0 };
+          compactWarnedRef.current = false;
           lastUserMsgRef.current = '';
+          clearLastSession(); // don't let --continue resurrect a cleared session
           return true;
 
         case 'model':
@@ -1097,6 +1156,7 @@ export function App({
           setThinkingWord('compressing');
           try {
             const summary = await agentRef.current.compact();
+            compactWarnedRef.current = false; // allow warning again if they keep filling context
             pushStatic({ type: 'info', content: `✔ Compacted. Summary:\n${summary}` });
           } catch (err) {
             pushStatic({ type: 'error', content: `Compact failed: ${err.message}` });

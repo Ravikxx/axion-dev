@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
+import { loadInputHistory, appendInputHistory } from '../persist.js';
 
 export function InputBox({
   onSubmit, disabled, placeholder, onChange, tabCompletion,
@@ -8,7 +9,7 @@ export function InputBox({
 }) {
   const [value, setValue] = useState('');
   const [cursor, setCursor] = useState(0);
-  const [history, setHistory] = useState([]);
+  const [history, setHistory] = useState(() => loadInputHistory());
   const [historyIdx, setHistoryIdx] = useState(-1);
   const [draft, setDraft] = useState(''); // preserves in-progress text while browsing history
 
@@ -34,7 +35,8 @@ export function InputBox({
         }
         const trimmed = value.trim();
         if (!trimmed) return;
-        setHistory((h) => [...h, trimmed]);
+        setHistory((h) => [...h.filter((l) => l !== trimmed), trimmed]);
+        appendInputHistory(trimmed);
         setHistoryIdx(-1);
         setDraft('');
         set('', 0);

@@ -15,7 +15,8 @@
     "start": "node dist/axion.js",
     "dev": "node build.js && node dist/axion.js",
     "watch": "node watch.js",
-    "web": "node build-web.js && node src/web/server.js"
+    "web": "node build-web.js && node src/web/server.js",
+    "test": "node test/run.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

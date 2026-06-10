@@ -152,9 +152,10 @@ export function undoStackSize() { return _undoStack.length; }
 
 const CHATS_DIR = join(DIR, 'chats');
 
-export function saveChat(name, { model, mode, tokenCount, agentHistory, displayMessages, tab = 'code' }) {
-  if (!existsSync(CHATS_DIR)) mkdirSync(CHATS_DIR, { recursive: true });
-  const data = {
+// Shared serializer — strips tool-call internals and diff arrays so saved
+// sessions stay small and JSON-safe. Used by both /save and session autosave.
+function serializeChat(name, { model, mode, tokenCount, agentHistory, displayMessages, tab = 'code' }) {
+  return {
     name,
     savedAt: new Date().toISOString(),
     model,
@@ -184,7 +185,34 @@ export function saveChat(name, { model, mode, tokenCount, agentHistory, displayM
     // Strip diff arrays from display messages (files already written)
     displayMessages: displayMessages.map(({ diff: _d, ...m }) => m),
   };
-  writeFileSync(join(CHATS_DIR, `${name}.json`), JSON.stringify(data, null, 2), 'utf8');
+}
+
+export function saveChat(name, payload) {
+  if (!existsSync(CHATS_DIR)) mkdirSync(CHATS_DIR, { recursive: true });
+  writeFileSync(join(CHATS_DIR, `${name}.json`), JSON.stringify(serializeChat(name, payload), null, 2), 'utf8');
+}
+
+// ── Session autosave (axion --continue) ────────────────────────────────────────
+// A single rolling slot, kept outside CHATS_DIR so it never appears in /resume.
+
+const LAST_SESSION_FILE = join(DIR, 'last-session.json');
+
+export function autosaveSession(payload) {
+  try {
+    if (!existsSync(DIR)) mkdirSync(DIR, { recursive: true });
+    writeFileSync(LAST_SESSION_FILE, JSON.stringify(serializeChat('__last__', payload), null, 2), 'utf8');
+  } catch {}
+}
+
+export function loadLastSession() {
+  try {
+    if (!existsSync(LAST_SESSION_FILE)) return null;
+    return JSON.parse(readFileSync(LAST_SESSION_FILE, 'utf8'));
+  } catch { return null; }
+}
+
+export function clearLastSession() {
+  try { if (existsSync(LAST_SESSION_FILE)) unlinkSync(LAST_SESSION_FILE); } catch {}
 }
 
 export function loadChat(name) {
@@ -295,6 +323,30 @@ export function listChats() {
       }
     })
     .sort((a, b) => (b.savedAt || '').localeCompare(a.savedAt || ''));
+}
+
+// ── Input history ─────────────────────────────────────────────────────────────
+
+const INPUT_HISTORY_FILE = join(DIR, 'input-history');
+const MAX_INPUT_HISTORY  = 500;
+
+export function loadInputHistory() {
+  try {
+    if (!existsSync(INPUT_HISTORY_FILE)) return [];
+    return readFileSync(INPUT_HISTORY_FILE, 'utf8')
+      .split('\n')
+      .filter(Boolean);
+  } catch { return []; }
+}
+
+export function appendInputHistory(entry) {
+  try {
+    if (!existsSync(DIR)) mkdirSync(DIR, { recursive: true });
+    const lines = loadInputHistory().filter((l) => l !== entry);
+    lines.push(entry);
+    const capped = lines.slice(-MAX_INPUT_HISTORY);
+    writeFileSync(INPUT_HISTORY_FILE, capped.join('\n') + '\n', 'utf8');
+  } catch {}
 }
 
 // ── Scheduled tasks ───────────────────────────────────────────────────────────

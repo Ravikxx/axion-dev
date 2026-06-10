@@ -2,7 +2,7 @@ import React from 'react';
 import { Box, Text } from 'ink';
 
 // Parse inline markup within a single line of text
-function parseInline(text) {
+export function parseInline(text) {
   const tokens = [];
   // Order matters: ** before * so bold isn't consumed as two italics
   const re = /\*\*(.+?)\*\*|\*(.+?)\*|`([^`\n]+)`/g;
@@ -30,7 +30,7 @@ function InlineTokens({ tokens }) {
 }
 
 // Split raw text into blocks before splitting by line (handles ``` fences)
-function parseBlocks(text) {
+export function parseBlocks(text) {
   const blocks = [];
   const lines = text.split('\n');
   let i = 0;

@@ -9,7 +9,7 @@ import { WebSocket } from 'ws';
 import { App } from './ui/App.jsx';
 import { LinkedApp } from './ui/LinkedApp.jsx';
 import { DEFAULT_MODEL, DEFAULT_MODE, API_KEYS, CUSTOM_ENDPOINTS, IMAGE_GEN_MODEL } from './config.js';
-import { getSavedModel, getSavedMode, getSavedApiKeys, getSavedCustomEndpoints, getSavedImageModel } from './persist.js';
+import { getSavedModel, getSavedMode, getSavedApiKeys, getSavedCustomEndpoints, getSavedImageModel, loadLastSession } from './persist.js';
 import { MCP } from './agent/mcp.js';
 import { runDoctor } from './doctor.js';
 import { runUpdate } from './update.js';
@@ -20,8 +20,8 @@ const WEB_SERVER = join(_cliDir, '../src/web/server.js');
 
 const argv = minimist(process.argv.slice(2), {
   string: ['model', 'mode'],
-  boolean: ['link', 'doctor', 'update', 'version', 'help'],
-  alias: { m: 'model', M: 'mode', v: 'version', h: 'help' },
+  boolean: ['link', 'doctor', 'update', 'version', 'help', 'continue'],
+  alias: { m: 'model', M: 'mode', v: 'version', h: 'help', c: 'continue' },
 });
 
 if (argv.version) {
@@ -40,6 +40,7 @@ Usage: axion [options] [prompt]
 Options:
   -m, --model <name>  Model alias (claude, fable, gpt, gemini, groq, mistral, ollama, veil…)
   -M, --mode <name>   Mode: ask | plan | auto
+  -c, --continue      Resume the most recent session
       --link          Link CLI to a running axion-serve web session
       --doctor        Check dependencies, API keys, and environment
       --update        Pull latest from GitHub and rebuild
@@ -71,6 +72,9 @@ if (argv.update) {
 
 // Positional args become the initial prompt sent on startup
 const initialPrompt = argv._.join(' ').trim();
+
+// --continue restores the most recent autosaved session (null if none exists)
+const resumeSession = argv['continue'] ? loadLastSession() : null;
 
 const savedModel = getSavedModel();
 const savedMode  = getSavedMode();
@@ -171,6 +175,7 @@ if (linked) {
     initialThinkingBudget: axionrc.thinkingBudget || 10000,
     webServerPath:         WEB_SERVER,
     initialPrompt,
+    initialResume:         resumeSession,
   });
 }
 
