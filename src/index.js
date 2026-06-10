@@ -19,14 +19,47 @@ const WEB_SERVER = join(_cliDir, '../src/web/server.js');
 
 const argv = minimist(process.argv.slice(2), {
   string: ['model', 'mode'],
-  boolean: ['link', 'doctor'],
-  alias: { m: 'model', M: 'mode' },
+  boolean: ['link', 'doctor', 'version', 'help'],
+  alias: { m: 'model', M: 'mode', v: 'version', h: 'help' },
 });
+
+if (argv.version) {
+  const pkgPath = join(_cliDir, '../package.json');
+  const pkg = existsSync(pkgPath) ? JSON.parse(readFileSync(pkgPath, 'utf8')) : {};
+  console.log(pkg.version || '1.0.0');
+  process.exit(0);
+}
+
+if (argv.help) {
+  console.log(`
+Usage: axion [options] [prompt]
+
+  prompt              Send a message on startup without typing in the TUI
+
+Options:
+  -m, --model <name>  Model alias (claude, fable, gpt, gemini, groq, mistral, ollama, veil…)
+  -M, --mode <name>   Mode: ask | plan | auto
+      --link          Link CLI to a running axion-serve web session
+      --doctor        Check dependencies, API keys, and environment
+  -v, --version       Print version and exit
+  -h, --help          Show this help
+
+Examples:
+  axion
+  axion "explain this codebase"
+  axion -m fable -M auto "refactor src/agent/tools.js"
+  axion --doctor
+`.trim());
+  process.exit(0);
+}
 
 if (argv.doctor) {
   runDoctor();
   process.exit(0);
 }
+
+// Positional args become the initial prompt sent on startup
+const initialPrompt = argv._.join(' ').trim();
 
 const savedModel = getSavedModel();
 const savedMode  = getSavedMode();
@@ -126,6 +159,7 @@ if (linked) {
     initialThinking:       axionrc.thinking     || false,
     initialThinkingBudget: axionrc.thinkingBudget || 10000,
     webServerPath:         WEB_SERVER,
+    initialPrompt,
   });
 }
 

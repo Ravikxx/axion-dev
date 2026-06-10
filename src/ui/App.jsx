@@ -243,6 +243,7 @@ export function App({
   initialThinking       = false,
   initialThinkingBudget = 10000,
   webServerPath         = '',
+  initialPrompt         = '',
 }) {
   const { exit } = useApp();
   const [model, setModel]         = useState(initialModel);
@@ -428,6 +429,15 @@ export function App({
     agentRef.current?.setComputerUse(computerUse);
     if (computerUse) showOverlay(); else hideOverlay();
   }, [computerUse]);
+
+  // Auto-submit prompt passed via CLI positional arg (e.g. axion "explain this")
+  // Empty deps — runs once on mount. handleSubmit is referenced in the setTimeout
+  // callback (not in the deps array) to avoid a temporal dead zone: handleSubmit
+  // is defined later in this component, so the deps array can't reference it here.
+  useEffect(() => {
+    if (!initialPrompt) return;
+    setTimeout(() => handleSubmit(initialPrompt), 0);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Core run (handles goal loop) ───────────────────────────────────────────
 
