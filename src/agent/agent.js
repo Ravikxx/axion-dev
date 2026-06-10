@@ -204,6 +204,9 @@ export class Agent {
     this.adviserModel = null;
     // Chat mode — simplified prompt, no tools
     this.chatMode = false;
+    // Interrupt support — cancel() aborts the in-flight request and stops the loop
+    this.cancelled  = false;
+    this._abortCtrl = null;
 
     this.onToolCall    = onToolCall    || (() => {});
     this.onToolResult  = onToolResult  || (() => {});
@@ -224,6 +227,14 @@ export class Agent {
   setGoal(description)     { this.goal = description || null; }
   setComputerUse(enabled)  { this.computerUse = !!enabled; }
   setAdviserModel(alias)   { this.adviserModel = alias || null; }
+
+  // Interrupt the current run: abort the in-flight API request and let the
+  // agent loop wind down. History stays consistent — pending tool calls get
+  // "Interrupted" results so the next turn doesn't break tool_use pairing.
+  cancel() {
+    this.cancelled = true;
+    try { this._abortCtrl?.abort(); } catch {}
+  }
 
   clearHistory() {
     this.history = [];
@@ -304,6 +315,7 @@ IMPORTANT RULES:
   // ── Main run ─────────────────────────────────────────────────────────────
 
   async run(userMessage, { askConfirm, askPlanConfirm } = {}) {
+    this.cancelled = false;
     // Set think reminder if the user's message asks for reasoning
     this._thinkReminder = /\bthink(?:ing)?\b|\breason(?:ing)?\b|\bconsider\b|\breflect\b|\bponder\b/i.test(userMessage);
     this.history.push({ role: 'user', content: buildUserContent(userMessage) });
@@ -338,6 +350,7 @@ IMPORTANT RULES:
     let adviceSent = false;
 
     while (iterations < MAX) {
+      if (this.cancelled) break;
       iterations++;
 
       // Stuck: too many iterations without finishing
@@ -399,6 +412,13 @@ IMPORTANT RULES:
         }
       } else {
         for (const tc of toolCalls) {
+          if (this.cancelled) {
+            const skipped = { id: tc.id, name: tc.name, output: 'Interrupted by user.', success: false };
+            toolResults.push(skipped);
+            this.onToolResult(skipped);
+            continue;
+          }
+
           this.onToolCall({ name: tc.name, input: tc.input, id: tc.id });
 
           if (this.mode === 'ask' && askConfirm) {
@@ -675,14 +695,21 @@ IMPORTANT RULES:
   async _callModel() {
     const { client, type } = createClient(this.modelAlias);
     const model = resolveModel(this.modelAlias);
+    this._abortCtrl = new AbortController();
     try {
       if (type === 'anthropic') return await this._callAnthropic(client, model);
       if (type === 'veil')      return await this._callVeil(client, model);
       // 'other' uses the same path as openai but gets the same fallback treatment
       return await this._callOpenAI(client, model);
     } catch (err) {
+      if (this.cancelled || /abort/i.test(err?.name || '') || /abort/i.test(err?.message || '')) {
+        this.onStreamEnd(); // flush whatever partial text streamed before the abort
+        return null;
+      }
       this.onMessage({ role: 'error', content: friendlyError(err, this.modelAlias) });
       return null;
+    } finally {
+      this._abortCtrl = null;
     }
   }
 
@@ -712,7 +739,7 @@ IMPORTANT RULES:
     };
     if (this.thinking.enabled) params.thinking = { type: 'enabled', budget_tokens: this.thinking.budget };
 
-    const stream = client.messages.stream(params);
+    const stream = client.messages.stream(params, { signal: this._abortCtrl?.signal });
     let thinkBuf = '', inThink = false;
 
     for await (const evt of stream) {
@@ -755,7 +782,7 @@ IMPORTANT RULES:
       const streamResp = await client.chat.completions.create({
         model, messages: msgs, tools: this._getToolListOpenAI(),
         tool_choice: 'auto', max_tokens: maxTok, stream: true,
-      });
+      }, { signal: this._abortCtrl?.signal });
 
       for await (const chunk of streamResp) {
         if (chunk.usage) usage = chunk.usage;
@@ -785,6 +812,7 @@ IMPORTANT RULES:
       return { type: 'openai', text: '', toolCalls, raw: null };
 
     } catch (err) {
+      if (this.cancelled) throw err; // handled (silently) by _callModel
       this.onStreamEnd(); // close any partial stream in the UI
       const errBody = err?.message || err?.error?.message || '';
       const isToolError =

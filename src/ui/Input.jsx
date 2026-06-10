@@ -1,8 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
 
-export function InputBox({ onSubmit, disabled, placeholder, onChange, tabCompletion, onToggleExpand, onToggleThinking, onCycleMode }) {
+export function InputBox({
+  onSubmit, disabled, placeholder, onChange, tabCompletion,
+  onToggleExpand, onToggleThinking, onCycleMode,
+  onInterrupt, interruptActive,
+}) {
   const [value, setValue] = useState('');
+  const [cursor, setCursor] = useState(0);
   const [history, setHistory] = useState([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
   const [draft, setDraft] = useState(''); // preserves in-progress text while browsing history
@@ -12,8 +17,13 @@ export function InputBox({ onSubmit, disabled, placeholder, onChange, tabComplet
   // Notify parent of value changes for autocomplete
   useEffect(() => { onChange?.(value); }, [value]);
 
+  const set = (v, c) => { setValue(v); setCursor(Math.max(0, Math.min(c, v.length))); };
+
   useInput(
     (input, key) => {
+      // Esc interrupts a running agent turn even while "disabled" isn't set
+      if (key.escape && interruptActive) { onInterrupt?.(); return; }
+
       if (disabled) return;
 
       if (key.return) {
@@ -22,56 +32,76 @@ export function InputBox({ onSubmit, disabled, placeholder, onChange, tabComplet
         setHistory((h) => [...h, trimmed]);
         setHistoryIdx(-1);
         setDraft('');
-        setValue('');
+        set('', 0);
         onChange?.('');
         onSubmit(trimmed);
         return;
       }
 
-      // Tab — complete the top suggestion
-      if (key.tab && tabCompletion) {
-        setValue(tabCompletion);
+      // Esc — clear the input (or exit history browsing back to a fresh line)
+      if (key.escape) {
+        setHistoryIdx(-1);
+        setDraft('');
+        set('', 0);
         return;
       }
+
+      // Tab — complete the top suggestion
+      if (key.tab && tabCompletion) {
+        set(tabCompletion, tabCompletion.length);
+        return;
+      }
+
+      if (key.leftArrow)  { setCursor((c) => Math.max(0, c - 1)); return; }
+      if (key.rightArrow) { setCursor((c) => Math.min(value.length, c + 1)); return; }
 
       if (key.upArrow) {
         if (!history.length) return;
         if (historyIdx === -1) setDraft(value); // save what's being typed
         const newIdx = Math.min(historyIdx + 1, history.length - 1);
+        const recalled = history[history.length - 1 - newIdx] || '';
         setHistoryIdx(newIdx);
-        setValue(history[history.length - 1 - newIdx] || '');
+        set(recalled, recalled.length);
         return;
       }
 
       if (key.downArrow) {
         if (historyIdx === -1) return;
         const newIdx = Math.max(historyIdx - 1, -1);
+        const next = newIdx === -1 ? draft : history[history.length - 1 - newIdx] || '';
         setHistoryIdx(newIdx);
-        setValue(newIdx === -1 ? draft : history[history.length - 1 - newIdx] || '');
-        return;
-      }
-
-      // Esc — clear the input (or exit history browsing back to draft)
-      if (key.escape) {
-        setHistoryIdx(-1);
-        setDraft('');
-        setValue('');
+        set(next, next.length);
         return;
       }
 
       if (key.backspace || key.delete) {
-        setValue((v) => v.slice(0, -1));
+        if (cursor === 0) return;
+        set(value.slice(0, cursor - 1) + value.slice(cursor), cursor - 1);
         return;
       }
 
-      if (key.ctrl && input === 'c') process.exit(0);
-      if (key.ctrl && input === 'e') { onToggleExpand?.();   return; }
-      if (key.ctrl && input === 't') { onToggleThinking?.(); return; }
-      if (key.ctrl && input === 'p') { onCycleMode?.();      return; }
+      if (key.ctrl) {
+        switch (input) {
+          case 'c': process.exit(0); return;
+          case 'a': setCursor(0); return;                              // start of line
+          case 'e': setCursor(value.length); return;                   // end of line
+          case 'u': set('', 0); return;                                // clear line
+          case 'k': set(value.slice(0, cursor), cursor); return;       // kill to end
+          case 'w': {                                                  // delete word before cursor
+            const left = value.slice(0, cursor).replace(/\S+\s*$/, '');
+            set(left + value.slice(cursor), left.length);
+            return;
+          }
+          case 'o': onToggleExpand?.();   return;
+          case 't': onToggleThinking?.(); return;
+          case 'p': onCycleMode?.();      return;
+          default: return;
+        }
+      }
 
-      if (!key.ctrl && !key.meta && input) {
+      if (!key.meta && input) {
         if (historyIdx !== -1) setHistoryIdx(-1); // editing a recalled entry starts a new draft
-        setValue((v) => v + input);
+        set(value.slice(0, cursor) + input + value.slice(cursor), cursor + input.length);
       }
     },
     { isActive }
@@ -84,11 +114,18 @@ export function InputBox({ onSubmit, disabled, placeholder, onChange, tabComplet
   return (
     <Box borderStyle="round" borderColor={borderColor} paddingX={1} marginX={1} marginTop={0}>
       <Text color={promptColor} bold>{'›'} </Text>
-      {value
-        ? <Text color="white">{value}</Text>
-        : <Text color="gray" dimColor>{placeholder || ''}</Text>
-      }
-      {!disabled && <Text color={promptColor}>▋</Text>}
+      {value ? (
+        <Text>
+          <Text color="white">{value.slice(0, cursor)}</Text>
+          {!disabled && <Text inverse color="white">{value[cursor] ?? ' '}</Text>}
+          <Text color="white">{value.slice(cursor + 1)}</Text>
+        </Text>
+      ) : (
+        <Text>
+          {!disabled && <Text inverse color="white"> </Text>}
+          <Text color="gray" dimColor>{placeholder || ''}</Text>
+        </Text>
+      )}
     </Box>
   );
 }
@@ -98,7 +135,7 @@ export function YesNoPrompt({ onAnswer }) {
   useInput((input, key) => {
     const ch = input.toLowerCase();
     if (ch === 'y' || key.return) onAnswer(true);
-    else if (ch === 'n') onAnswer(false);
+    else if (ch === 'n' || key.escape) onAnswer(false);
   }, { isActive });
   return null;
 }

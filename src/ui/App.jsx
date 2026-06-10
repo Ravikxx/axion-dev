@@ -2086,6 +2086,13 @@ export function App({
     setPendingConfirm(null);
   }, []);
 
+  const handleInterrupt = useCallback(() => {
+    if (!agentRef.current || agentRef.current.cancelled) return;
+    agentRef.current.cancel();
+    goalActiveRef.current = false; // also stops an active goal loop
+    addLive({ type: 'info', content: '⎋ Interrupted — stopping after the current step.' });
+  }, [addLive]);
+
   const handleCycleMode = useCallback(() => {
     const idx  = CYCLE_MODES.indexOf(mode);
     const next = CYCLE_MODES[(idx + 1) % CYCLE_MODES.length];
@@ -2160,6 +2167,7 @@ export function App({
         <Box marginX={2} gap={1}>
           <Text color="greenBright"><Spinner type="dots" /></Text>
           <Text color="greenBright">{thinkingWord}…</Text>
+          <Text color="gray" dimColor>esc to interrupt</Text>
         </Box>
       )}
 
@@ -2204,6 +2212,8 @@ export function App({
         onToggleExpand={() => setDiffsExpanded(v => !v)}
         onToggleThinking={() => setThinkingExpanded(v => !v)}
         onCycleMode={handleCycleMode}
+        onInterrupt={handleInterrupt}
+        interruptActive={thinking}
       />
     </Box>
   );
