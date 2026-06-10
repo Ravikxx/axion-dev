@@ -100,6 +100,7 @@ Or set them live inside the CLI:
 |---|---|---|
 | `veil` | Axion Labs | No key required — free but slow (up to 100s), not broken |
 | `openrouter` / `or` | OpenRouter | 200+ models via one key |
+| `fable` | Anthropic | claude-fable-5 |
 | `claude` | Anthropic | claude-sonnet-4-6 |
 | `claude-opus` | Anthropic | claude-opus-4-8 |
 | `claude-haiku` | Anthropic | claude-haiku-4-5 |
