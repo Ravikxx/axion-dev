@@ -786,8 +786,11 @@ IMPORTANT RULES:
 
     } catch (err) {
       this.onStreamEnd(); // close any partial stream in the UI
-      const isToolError = err?.status === 400 || err?.status === 500 ||
-        /function|tool|failed_generation/i.test(err?.message || '');
+      const errBody = err?.message || err?.error?.message || '';
+      const isToolError =
+        /function|tool|failed_generation|does not support tools|tool_use/i.test(errBody) ||
+        (err?.status === 400 && /invalid|unsupported|parameter/i.test(errBody)) ||
+        err?.status === 500;
       if (!isToolError) throw err;
       toolErrFallback = true;
     }

@@ -1,8 +1,11 @@
 import { execSync } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
 import { homedir, platform } from 'os';
+import { fileURLToPath } from 'url';
 import { API_KEYS } from './config.js';
+
+const _doctorDir = dirname(fileURLToPath(import.meta.url));
 
 const os = platform();
 
@@ -125,6 +128,23 @@ function checkMcp() {
   }
 }
 
+function checkUpdates() {
+  head('Updates');
+  const rootDir = join(_doctorDir, '..');
+  try {
+    const local  = execSync('git rev-parse HEAD',                  { cwd: rootDir, timeout: 3000 }).toString().trim();
+    const remote = execSync('git ls-remote origin HEAD',           { cwd: rootDir, timeout: 5000 }).toString().split('\t')[0].trim();
+    if (!remote) { warn('Could not reach GitHub — skipping update check'); return; }
+    if (local === remote) {
+      ok('Up to date');
+    } else {
+      warn(`Update available — run \x1b[1maxion --update\x1b[0m\x1b[33m to pull the latest`);
+    }
+  } catch {
+    warn('Could not check for updates (git or network unavailable)');
+  }
+}
+
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 export function runDoctor() {
@@ -136,5 +156,6 @@ export function runDoctor() {
   checkWebServer();
   checkAxionDir();
   checkMcp();
+  checkUpdates();
   process.stdout.write('\n');
 }
