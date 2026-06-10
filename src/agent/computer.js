@@ -308,9 +308,7 @@ Write-Output "$($screen.Width)x$($screen.Height)"
     return { base64: data.toString('base64'), mediaType: 'image/png', width: 0, height: 0 };
 
   } else {
-    try { execSync('which scrot', { stdio: 'ignore', timeout: 1000 }); }
-    catch { throw new Error('scrot not installed — run: sudo apt install scrot'); }
-    execSync(`scrot "${imgPath}"`, { timeout: 5000 });
+    captureLinuxScreen(imgPath);
     const data = readFileSync(imgPath);
     try { unlinkSync(imgPath); } catch {}
     return { base64: data.toString('base64'), mediaType: 'image/png', width: 0, height: 0 };
@@ -437,7 +435,7 @@ Write-Output "$W x $H"
     if (process.platform === 'darwin') {
       execSync(`screencapture -x "${imgPath}"`, { timeout: 5000 });
     } else {
-      execSync(`scrot "${imgPath}"`, { timeout: 5000 });
+      captureLinuxScreen(imgPath);
     }
 
     try {
@@ -451,6 +449,78 @@ Write-Output "$W x $H"
     } finally {
       try { unlinkSync(imgPath); } catch {}
     }
+  }
+}
+
+// Crop a 200×80px region centred on (cx, cy) from the current screen.
+// Used by find_text to let the agent verify the match visually.
+// Returns { base64, mediaType } or null if cropping tools are unavailable.
+export function cropScreenRegion(cx, cy) {
+  const PAD_X = 200, PAD_Y = 60;
+  const { width: sw, height: sh } = getScreenSize();
+  const x0 = Math.max(0, cx - PAD_X);
+  const y0 = Math.max(0, cy - PAD_Y);
+  const x1 = Math.min(sw, cx + PAD_X);
+  const y1 = Math.min(sh, cy + PAD_Y);
+  const w  = x1 - x0, h = y1 - y0;
+
+  if (process.platform === 'win32') {
+    const outPath = join(tmpdir(), `axion-crop-${Date.now()}.png`).replace(/\\/g, '\\\\');
+    const script  = `
+Add-Type -AssemblyName System.Windows.Forms,System.Drawing
+$full = New-Object System.Drawing.Bitmap(${w}, ${h})
+$g    = [System.Drawing.Graphics]::FromImage($full)
+$g.CopyFromScreen(${x0}, ${y0}, 0, 0, [System.Drawing.Size]::new(${w}, ${h}))
+$full.Save('${outPath}'); $g.Dispose(); $full.Dispose()
+`;
+    try {
+      runPowerShell(script, 6000);
+      const data = readFileSync(outPath.replace(/\\\\/g, '\\'));
+      try { unlinkSync(outPath.replace(/\\\\/g, '\\')); } catch {}
+      return { base64: data.toString('base64'), mediaType: 'image/png' };
+    } catch { return null; }
+  }
+
+  const imgPath = join(tmpdir(), `axion-crop-${Date.now()}.png`);
+  try {
+    if (process.platform === 'darwin') {
+      execSync(`screencapture -x -R ${x0},${y0},${w},${h} "${imgPath}"`, { timeout: 5000 });
+    } else if (isWayland() && which('grim')) {
+      // grim supports direct region capture: -g "x,y WxH"
+      execSync(`grim -g "${x0},${y0} ${w}x${h}" "${imgPath}"`, { timeout: 5000 });
+    } else if (which('convert')) {
+      const full = join(tmpdir(), `axion-crop-full-${Date.now()}.png`);
+      captureLinuxScreen(full);
+      execSync(`convert "${full}" -crop ${w}x${h}+${x0}+${y0} +repage "${imgPath}"`, { timeout: 5000 });
+      try { unlinkSync(full); } catch {}
+    } else {
+      return null;
+    }
+    const data = readFileSync(imgPath);
+    try { unlinkSync(imgPath); } catch {}
+    return { base64: data.toString('base64'), mediaType: 'image/png' };
+  } catch { return null; }
+}
+
+function which(bin) {
+  try { execSync(`which ${bin}`, { stdio: 'ignore', timeout: 1000 }); return true; } catch { return false; }
+}
+
+// True when running under a native Wayland compositor (WAYLAND_DISPLAY is set).
+// Note: DISPLAY may also be set (XWayland), so we check WAYLAND_DISPLAY specifically.
+function isWayland() {
+  return process.platform === 'linux' && !!process.env.WAYLAND_DISPLAY;
+}
+
+// Capture the full Linux screen to imgPath.
+// Uses grim on Wayland, scrot on X11.
+function captureLinuxScreen(imgPath) {
+  if (isWayland()) {
+    if (!which('grim')) throw new Error('grim not installed — run: sudo apt install grim  (Wayland screenshot tool)');
+    execSync(`grim "${imgPath}"`, { timeout: 5000 });
+  } else {
+    if (!which('scrot')) throw new Error('scrot not installed — run: sudo apt install scrot');
+    execSync(`scrot "${imgPath}"`, { timeout: 5000 });
   }
 }
 
@@ -488,6 +558,17 @@ for ($i = 0; $i -lt ${count}; $i++) {
     writeFileSync(tmp, `tell application "System Events"\n${lines.join('\n')}\nend tell`);
     try { execSync(`osascript "${tmp}"`, { timeout: 5000 }); } finally { try { unlinkSync(tmp); } catch {} }
 
+  } else if (isWayland()) {
+    // Wayland: ydotool (requires ydotoold daemon running)
+    // Button flags: 0x40000000 = click, low bits = button ID (0=left,1=right,2=middle)
+    const btnId = button === 'right' ? 1 : button === 'middle' ? 2 : 0;
+    const btn = `0x${(0x40000000 | btnId).toString(16)}`;
+    const cmds = Array.from({ length: count }, (_, i) =>
+      `ydotool mousemove --absolute -x ${xi} -y ${yi} && ydotool click ${btn}` +
+      (i < count - 1 ? ' && sleep 0.08' : '')
+    ).join(' && ');
+    execSync(cmds, { timeout: 10000, shell: true });
+
   } else {
     const btn = button === 'right' ? 3 : button === 'middle' ? 2 : 1;
     execSync(`xdotool mousemove ${xi} ${yi} click --repeat ${count} --delay 80 ${btn}`, { timeout: 5000 });
@@ -512,13 +593,22 @@ Start-Sleep -Milliseconds 150
     const escaped = text.replace(/'/g, "'\\''");
     execSync(`printf '%s' '${escaped}' | pbcopy && osascript -e 'tell application "System Events" to keystroke "v" using command down'`, { timeout: 5000 });
 
+  } else if (isWayland()) {
+    // Wayland: wtype is the lightest option; ydotool type works too; wl-copy fallback
+    const esc = text.replace(/\\/g, '\\\\').replace(/'/g, "'\\''");
+    if (which('wtype')) {
+      execSync(`wtype -- '${esc}'`, { timeout: 10000 });
+    } else {
+      const esc2 = text.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      execSync(`ydotool type --key-delay 0 -- "${esc2}"`, { timeout: 10000 });
+    }
+
   } else {
-    // Prefer xdotool type (no clipboard dependency, works on Wayland via XWayland)
+    // X11: prefer xdotool type; fall back to xclip clipboard paste
     const escaped = text.replace(/\\/g, '\\\\').replace(/'/g, "'\\''");
     try {
       execSync(`xdotool type --clearmodifiers --delay 0 -- '${escaped}'`, { timeout: 10000 });
     } catch {
-      // Fallback: clipboard paste via xclip if xdotool type fails
       execSync(`printf '%s' '${escaped}' | xclip -selection clipboard && xdotool key ctrl+v`, { timeout: 5000 });
     }
   }
@@ -581,6 +671,10 @@ Add-Type -AssemblyName System.Windows.Forms
     const tmp = join(tmpdir(), `axion-key-${Date.now()}.scpt`);
     writeFileSync(tmp, `tell application "System Events"\n${lines.join('\n')}\nend tell`);
     try { execSync(`osascript "${tmp}"`, { timeout: 5000 }); } finally { try { unlinkSync(tmp); } catch {} }
+
+  } else if (isWayland()) {
+    // ydotool uses the same XKB key names as xdotool
+    execSync(`ydotool key ${sendKeysToX11(keys)}`, { timeout: 5000 });
 
   } else {
     execSync(`xdotool key ${sendKeysToX11(keys)}`, { timeout: 5000 });
@@ -655,6 +749,18 @@ Add-Type -TypeDefinition @"${AXION_INPUT_CS}"@
         `osascript -e 'tell application "System Events"' -e 'repeat ${amount} times' -e 'key code ${keyCode}' -e 'end repeat' -e 'end tell'`,
         { timeout: 5000 }
       );
+    }
+
+  } else if (isWayland()) {
+    execSync(`ydotool mousemove --absolute -x ${xi} -y ${yi}`, { timeout: 3000 });
+    // ydotool scroll --axis: 0=vertical, value: negative=up, positive=down (120 units per notch)
+    const delta = direction === 'up' ? -(amount * 120) : amount * 120;
+    try {
+      execSync(`ydotool scroll --axis 0 -- ${delta}`, { timeout: 5000 });
+    } catch {
+      // Fallback: arrow keys if scroll axis unsupported
+      const key = direction === 'up' ? 'Up' : 'Down';
+      execSync(`ydotool key ${Array(amount).fill(key).join(' ')}`, { timeout: 5000 });
     }
 
   } else {
@@ -819,7 +925,7 @@ export function ocrFindText(searchTerm) {
       if (process.platform === 'darwin') {
         execSync(`screencapture -x "${imgPath}"`, { timeout: 5000 });
       } else {
-        execSync(`scrot "${imgPath}"`, { timeout: 5000 });
+        captureLinuxScreen(imgPath);
       }
 
       // Run tesseract in hOCR mode
@@ -991,6 +1097,15 @@ Write-Output "$($s.Width)x$($s.Height)"
       if (parts.length === 4 && parts[2] && parts[3]) return { width: parts[2], height: parts[3] };
     } catch {}
   } else {
+    // Wayland compositors: try wlr-randr first (wlroots-based: Sway, Hyprland, etc.)
+    if (isWayland()) {
+      try {
+        const out = execSync(`wlr-randr 2>/dev/null | grep -m1 ' px'`, { encoding: 'utf8', timeout: 3000 }).trim();
+        const m = out.match(/(\d+)x(\d+)\s+px/);
+        if (m) return { width: Number(m[1]), height: Number(m[2]) };
+      } catch {}
+    }
+    // X11 or XWayland fallback
     try {
       const out = execSync(`xrandr 2>/dev/null | grep -m1 'current' | sed "s/.*current \\([0-9]*\\) x \\([0-9]*\\).*/\\1 \\2/"`, { encoding: 'utf8', timeout: 3000 }).trim();
       const [w, h] = out.split(' ').map(Number);

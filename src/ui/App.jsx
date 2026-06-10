@@ -62,6 +62,8 @@ const HELP_TEXT = `  Commands
   /endpoint                             list saved endpoints
   /thinking [on|off|<tokens>]   toggle extended thinking (all models)
   /adviser [model|auto|off]     set model used as adviser when agent gets stuck
+  /run <cmd>                    run a shell command and feed output to the agent
+  /pr [context]                 draft a PR title+body from recent commits
   /computer [on|off]            toggle computer use (screen control)  (alias: /cu)
   /vision  <model>              set vision model for computer use (saved)
   /vision                       show current vision model
@@ -673,6 +675,32 @@ export function App({
           return true;
         }
 
+        case 'run': {
+          if (!arg) {
+            pushStatic({ type: 'error', content: 'usage: /run <shell command>\n  Runs the command and feeds its output to the agent.' });
+            return true;
+          }
+          pushStatic({ type: 'info', content: `▶ ${arg}` });
+          try {
+            const output = execSync(arg, {
+              encoding: 'utf8',
+              cwd: process.cwd(),
+              timeout: 30000,
+              stdio: ['ignore', 'pipe', 'pipe'],
+            });
+            const trimmed = output.trim();
+            pushStatic({ type: 'info', content: trimmed || '(no output)' });
+            if (trimmed) {
+              handleSubmit(`Output of \`${arg}\`:\n\`\`\`\n${trimmed.slice(0, 8000)}\n\`\`\``);
+            }
+          } catch (err) {
+            const out = ((err.stdout || '') + (err.stderr || '')).trim();
+            pushStatic({ type: 'error', content: `exited ${err.status ?? '?'}: ${out || err.message}` });
+            if (out) handleSubmit(`Command \`${arg}\` failed (exit ${err.status ?? '?'}):\n\`\`\`\n${out.slice(0, 8000)}\n\`\`\``);
+          }
+          return true;
+        }
+
         case 'compare': {
           if (!arg) {
             pushStatic({ type: 'error', content: 'usage: /compare [model1,model2,...] <prompt>\n  e.g. /compare what is a monad\n       /compare claude,gpt,ollama what is a monad\n       /compare claude-opus,gemini-2.5-pro explain async/await' });
@@ -928,6 +956,26 @@ export function App({
           saveModel(epName);
           const ep = CUSTOM_ENDPOINTS[epName];
           pushStatic({ type: 'info', content: `Endpoint "${epName}" saved → ${ep.baseURL}\n  model: ${ep.model}  key: ${epKey ? '(set)' : 'none'}\nSwitched to "${epName}"` });
+          return true;
+        }
+
+        case 'pr': {
+          // Draft a PR title+body from recent commits then open gh pr create
+          try {
+            const log = execSync('git log @{u}..HEAD --oneline --no-decorate 2>/dev/null || git log HEAD~5..HEAD --oneline --no-decorate', { encoding: 'utf8', cwd: process.cwd() }).trim();
+            const diff = execSync('git diff @{u}..HEAD --stat 2>/dev/null || git diff HEAD~5..HEAD --stat', { encoding: 'utf8', cwd: process.cwd() }).trim();
+            if (!log) {
+              pushStatic({ type: 'info', content: 'No commits ahead of upstream. Nothing to PR.' });
+              return true;
+            }
+            const prompt = arg
+              ? `Create a GitHub PR for these commits. Extra context: ${arg}\n\nCommits:\n${log}\n\nChanged files:\n${diff}\n\nRespond with ONLY:\nTITLE: <title>\nBODY:\n<markdown body with ## Summary bullets and ## Test plan>`
+              : `Create a GitHub PR for these commits.\n\nCommits:\n${log}\n\nChanged files:\n${diff}\n\nRespond with ONLY:\nTITLE: <title>\nBODY:\n<markdown body with ## Summary bullets and ## Test plan>`;
+            pushStatic({ type: 'info', content: `Drafting PR from ${log.split('\n').length} commit(s)…` });
+            handleSubmit(prompt);
+          } catch (err) {
+            pushStatic({ type: 'error', content: `git error: ${err.message.split('\n')[0]}` });
+          }
           return true;
         }
 

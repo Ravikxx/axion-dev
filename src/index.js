@@ -51,6 +51,10 @@ Examples:
   axion "explain this codebase"
   axion -m fable -M auto "refactor src/agent/tools.js"
   axion --doctor
+
+Shell completions:
+  bash  source /path/to/axion/completions/axion.bash
+  zsh   fpath=(/path/to/axion/completions $fpath) && autoload -Uz compinit && compinit
 `.trim());
   process.exit(0);
 }

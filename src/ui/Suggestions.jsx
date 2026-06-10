@@ -9,6 +9,8 @@ export const COMMANDS = [
   { cmd: 'endpoint',        desc: '<name> <url> [model] [key]  add/list custom endpoints' },
   { cmd: 'thinking',        desc: '[on|off|<tokens>]  toggle extended thinking' },
   { cmd: 'adviser',         desc: '[model|auto|off]  set adviser model' },
+  { cmd: 'run',             desc: '<cmd>  run a shell command and feed output to the agent' },
+  { cmd: 'pr',              desc: '[context]  draft a PR title+body from recent commits' },
   { cmd: 'computer',        desc: '[on|off]  toggle computer use (screen control)  (alias: /cu)' },
   { cmd: 'cu',              desc: '[on|off]  shortcut for /computer' },
   { cmd: 'vision',          desc: '<model>  set vision model for computer use' },

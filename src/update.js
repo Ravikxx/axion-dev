@@ -22,6 +22,10 @@ export function runUpdate() {
 
   process.stdout.write('\n\x1b[1m◈ Axion Update\x1b[0m\n');
 
+  // Capture the local HEAD before pulling so we can show a changelog after
+  let oldHead = '';
+  try { oldHead = execSync('git rev-parse HEAD', { cwd: rootDir }).toString().trim(); } catch {}
+
   try {
     step('Pulling from GitHub…');
     run('git pull --ff-only', rootDir);
@@ -55,7 +59,24 @@ export function runUpdate() {
 
   process.stdout.write(
     before !== after
-      ? `\n  \x1b[32m${before} → ${after}\x1b[0m  Axion updated successfully\n\n`
-      : `\n  \x1b[32mAxion is up to date (${after})\x1b[0m\n\n`
+      ? `\n  \x1b[32m${before} → ${after}\x1b[0m  Axion updated successfully\n`
+      : `\n  \x1b[32mAxion is up to date (${after})\x1b[0m\n`
   );
+
+  // Show commits that arrived in this pull
+  if (oldHead) {
+    try {
+      const log = execSync(
+        `git log ${oldHead}..HEAD --oneline --no-decorate`,
+        { cwd: rootDir, encoding: 'utf8' }
+      ).trim();
+      if (log) {
+        process.stdout.write(`\n\x1b[1mWhat's new:\x1b[0m\n`);
+        for (const line of log.split('\n')) {
+          process.stdout.write(`  \x1b[2m${line}\x1b[0m\n`);
+        }
+      }
+    } catch {}
+  }
+  process.stdout.write('\n');
 }

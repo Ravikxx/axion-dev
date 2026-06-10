@@ -5,7 +5,7 @@ import { diffLines } from '../utils/diff.js';
 import { backupFile } from '../persist.js';
 import { API_KEYS } from '../config.js';
 import { BUS } from './bus.js';
-import { captureScreen, captureScreenAnnotated, uiaClickElement, mouseClick, typeText, pressKey, scrollAt, getScreenSize, ocrFindText, MACRO_STATE } from './computer.js';
+import { captureScreen, captureScreenAnnotated, uiaClickElement, mouseClick, typeText, pressKey, scrollAt, getScreenSize, ocrFindText, cropScreenRegion, MACRO_STATE } from './computer.js';
 import { analyzeScreen, parseCoordinates } from './vision.js';
 import { executeGoogleTool, GOOGLE_TOOL_DEFINITIONS, GOOGLE_TOOL_DEFINITIONS_OPENAI } from './google.js';
 import { getOAuthToken } from '../oauth/oauth.js';
@@ -690,11 +690,19 @@ export async function executeTool(name, input, { agentLabel = 'main', onNotify =
         const result = ocrFindText(input.text);
         if (!result) return { success: false, output: `"${input.text}" not found on screen via OCR.` };
         if (result.error) return { success: false, output: result.error };
+
+        // Crop a region around the match so the agent can visually verify it
+        const crop = cropScreenRegion(result.x, result.y);
+
         if (input.click) {
           mouseClick(result.x, result.y, 'left');
-          return { success: true, output: `Found "${input.text}" at (${result.x}, ${result.y}) and clicked it.` };
+          const msg = `Found "${input.text}" at (${result.x}, ${result.y}) and clicked it.`;
+          if (crop) return { success: true, output: msg, image: crop };
+          return { success: true, output: msg };
         }
-        return { success: true, output: `Found "${input.text}" at (${result.x}, ${result.y}).` };
+        const msg = `Found "${input.text}" at (${result.x}, ${result.y}).`;
+        if (crop) return { success: true, output: msg, image: crop };
+        return { success: true, output: msg };
       }
 
       default: {

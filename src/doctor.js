@@ -79,7 +79,40 @@ function checkComputerUse() {
     return;
   }
 
-  // Linux
+  // Linux — branch on Wayland vs X11
+  const onWayland = !!process.env.WAYLAND_DISPLAY;
+  if (onWayland) {
+    head(`Computer use (linux/wayland)`);
+    // Screenshots
+    if (which('grim')) ok('grim — Wayland screenshots');
+    else fail('grim not found — screenshots will not work  →  sudo apt install grim');
+
+    // Mouse + keyboard
+    if (which('ydotool')) ok('ydotool — mouse, keyboard, scroll  (needs ydotoold daemon)');
+    else fail('ydotool not found — mouse/keyboard will not work  →  sudo apt install ydotool');
+
+    // Text input
+    if (which('wtype')) ok('wtype — fast text input on Wayland');
+    else warn('wtype not found — ydotool type used as fallback  →  sudo apt install wtype');
+
+    // Clipboard
+    if (which('wl-copy')) ok('wl-clipboard — clipboard support');
+    else warn('wl-clipboard not found — clipboard paste unavailable  →  sudo apt install wl-clipboard');
+
+    // Optional
+    if (which('convert')) ok('imagemagick — annotated screenshots enabled');
+    else warn('imagemagick not found — annotated screenshots fall back to plain  →  sudo apt install imagemagick');
+
+    if (which('tesseract')) ok('tesseract — OCR / find_text enabled');
+    else warn('tesseract not found — click_on text search unavailable  →  sudo apt install tesseract-ocr');
+
+    try { execSync('python3 -c "import tkinter"', { stdio: 'ignore', timeout: 2000 }); ok('python3 tkinter — overlay enabled'); }
+    catch { warn('python3-tk not found — computer-use overlay disabled  →  sudo apt install python3-tk'); }
+
+    if (which('wlr-randr')) ok('wlr-randr — Wayland screen size detection');
+    else warn('wlr-randr not found — falls back to xrandr/defaults  →  sudo apt install wlr-randr');
+
+  } else {
   if (which('xdotool')) ok('xdotool — mouse, keyboard, scroll');
   else fail('xdotool not found — mouse/keyboard will not work  →  sudo apt install xdotool');
 
@@ -100,6 +133,7 @@ function checkComputerUse() {
 
   if (which('xdpyinfo') || which('xrandr')) ok('screen size detection available');
   else warn('xdpyinfo/xrandr not found — screen size defaults to 1920×1080');
+  } // end if/else onWayland
 
   if (process.env.DISPLAY || process.env.WAYLAND_DISPLAY) {
     ok(`Display: ${process.env.DISPLAY || process.env.WAYLAND_DISPLAY}`);
