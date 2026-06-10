@@ -404,9 +404,10 @@ export async function executeTool(name, input, { agentLabel = 'main', onNotify =
         const count = (oldContent.split(input.find).length - 1);
         if (count === 0) return { success: false, output: `String not found in ${relPath(input.path)}` };
         backupFile(absPath, oldContent);
+        // Use a function replacer to prevent JS from interpreting $& $1 $` $' etc. in the replacement string
         const newContent = input.all
           ? oldContent.split(input.find).join(input.replace)
-          : oldContent.replace(input.find, input.replace);
+          : oldContent.replace(input.find, () => input.replace);
         writeFileSync(absPath, newContent, 'utf8');
         const fmt  = tryAutoFormat(absPath);
         const diff = diffLines(oldContent, newContent);
@@ -481,16 +482,23 @@ export async function executeTool(name, input, { agentLabel = 'main', onNotify =
       }
 
       case 'run_command': {
-        // Intercept `cd <path>` so the working directory persists across calls.
-        const cdMatch = input.command.trim().match(/^cd\s+(.+)$/);
+        // Intercept bare `cd <path>` (no shell operators) so cwd persists across calls.
+        // Compound commands like `cd /tmp && ls` are left for the shell to handle.
+        const cdMatch = input.command.trim().match(/^cd\s+((?:[^\s;&|`()\n]|\\.)+)\s*$/);
         if (cdMatch) {
           const target = resolve(cwd, cdMatch[1].trim());
           if (!existsSync(target)) return { success: false, output: `cd: no such directory: ${target}` };
           cwd = target;
           return { success: true, output: `(cwd → ${cwd})` };
         }
-        const result = execSync(input.command, { cwd, encoding: 'utf8', timeout: 30000, stdio: ['pipe', 'pipe', 'pipe'] });
-        return { success: true, output: result || '(no output)' };
+        try {
+          const result = execSync(input.command, { cwd, encoding: 'utf8', timeout: 30000, stdio: ['pipe', 'pipe', 'pipe'] });
+          return { success: true, output: result || '(no output)' };
+        } catch (err) {
+          // execSync throws on non-zero exit — expose the actual stdout/stderr so the agent sees the failure reason
+          const combined = [err.stdout, err.stderr].filter(Boolean).join('\n').trim();
+          return { success: false, output: combined || err.message };
+        }
       }
 
       case 'git_status': {
@@ -699,7 +707,8 @@ export async function executeTool(name, input, { agentLabel = 'main', onNotify =
       }
     }
   } catch (err) {
-    return { success: false, output: err.message || String(err) };
+    const combined = [err.stdout, err.stderr].filter(Boolean).join('\n').trim();
+    return { success: false, output: combined || err.message || String(err) };
   }
 }
 

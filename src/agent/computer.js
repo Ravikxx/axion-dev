@@ -338,7 +338,8 @@ for ($i = 0; $i -lt ${count}; $i++) {
     }
 
   } else {
-    execSync(`xdotool mousemove ${xi} ${yi} click --repeat ${count} --delay 80 1`, { timeout: 5000 });
+    const btn = button === 'right' ? 3 : button === 'middle' ? 2 : 1;
+    execSync(`xdotool mousemove ${xi} ${yi} click --repeat ${count} --delay 80 ${btn}`, { timeout: 5000 });
   }
 }
 
@@ -361,8 +362,14 @@ Start-Sleep -Milliseconds 150
     execSync(`printf '%s' '${escaped}' | pbcopy && osascript -e 'tell application "System Events" to keystroke "v" using command down'`, { timeout: 5000 });
 
   } else {
-    const escaped = text.replace(/'/g, "'\\''");
-    execSync(`printf '%s' '${escaped}' | xclip -selection clipboard && xdotool key ctrl+v`, { timeout: 5000 });
+    // Prefer xdotool type (no clipboard dependency, works on Wayland via XWayland)
+    const escaped = text.replace(/\\/g, '\\\\').replace(/'/g, "'\\''");
+    try {
+      execSync(`xdotool type --clearmodifiers --delay 0 -- '${escaped}'`, { timeout: 10000 });
+    } catch {
+      // Fallback: clipboard paste via xclip if xdotool type fails
+      execSync(`printf '%s' '${escaped}' | xclip -selection clipboard && xdotool key ctrl+v`, { timeout: 5000 });
+    }
   }
 }
 
@@ -381,8 +388,50 @@ Add-Type -AssemblyName System.Windows.Forms
     execSync(`osascript -e 'tell application "System Events" to keystroke "${escaped}"'`, { timeout: 5000 });
 
   } else {
-    execSync(`xdotool key ${keys}`, { timeout: 5000 });
+    execSync(`xdotool key ${sendKeysToX11(keys)}`, { timeout: 5000 });
   }
+}
+
+// Translate Windows SendKeys format to xdotool X11 key names.
+// SendKeys: ^=Ctrl, %=Alt, +=Shift, {NAME}=special key, bare chars=literal
+function sendKeysToX11(keys) {
+  const SPECIAL = {
+    ENTER: 'Return', RETURN: 'Return', TAB: 'Tab', ESC: 'Escape', ESCAPE: 'Escape',
+    BACKSPACE: 'BackSpace', BS: 'BackSpace', DELETE: 'Delete', DEL: 'Delete',
+    INSERT: 'Insert', INS: 'Insert', HOME: 'Home', END: 'End',
+    PGUP: 'Prior', PGDN: 'Next', UP: 'Up', DOWN: 'Down', LEFT: 'Left', RIGHT: 'Right',
+    F1: 'F1', F2: 'F2', F3: 'F3', F4: 'F4', F5: 'F5', F6: 'F6',
+    F7: 'F7', F8: 'F8', F9: 'F9', F10: 'F10', F11: 'F11', F12: 'F12',
+    SPACE: 'space', PLUS: 'plus', TILDE: 'asciitilde',
+  };
+
+  const tokens = [];
+  let i = 0;
+  const mods = [];
+
+  while (i < keys.length) {
+    const ch = keys[i];
+    if (ch === '^') { mods.push('ctrl'); i++; continue; }
+    if (ch === '%') { mods.push('alt');  i++; continue; }
+    if (ch === '+') { mods.push('shift'); i++; continue; }
+    if (ch === '{') {
+      const close = keys.indexOf('}', i);
+      const name = close === -1 ? '' : keys.slice(i + 1, close).toUpperCase();
+      const x11  = SPECIAL[name] || name.toLowerCase();
+      const combo = [...mods, x11].join('+');
+      tokens.push(combo);
+      mods.length = 0;
+      i = close === -1 ? keys.length : close + 1;
+      continue;
+    }
+    // Bare character — map to xdotool key name
+    const x11 = ch === ' ' ? 'space' : ch;
+    tokens.push([...mods, x11].join('+'));
+    mods.length = 0;
+    i++;
+  }
+
+  return tokens.join(' ');
 }
 
 // ── Scroll ────────────────────────────────────────────────────────────────────
@@ -401,8 +450,17 @@ Add-Type -TypeDefinition @"${AXION_INPUT_CS}"@
     runPowerShell(script);
 
   } else if (process.platform === 'darwin') {
-    const sign = direction === 'up' ? '' : '-';
-    execSync(`osascript -e 'tell application "System Events" to scroll ${sign}${amount}'`, { timeout: 5000 });
+    // cliclick handles scroll wheel correctly on macOS; fall back to arrow keys
+    const btn = direction === 'up' ? 'su' : 'sd';
+    try {
+      execSync(`cliclick ${btn}:${xi},${yi}`, { timeout: 3000 });
+    } catch {
+      const keyCode = direction === 'up' ? 126 : 125;
+      execSync(
+        `osascript -e 'tell application "System Events"' -e 'repeat ${amount} times' -e 'key code ${keyCode}' -e 'end repeat' -e 'end tell'`,
+        { timeout: 5000 }
+      );
+    }
 
   } else {
     const btn = direction === 'up' ? 4 : 5;
@@ -620,6 +678,20 @@ Write-Output "$($s.Width)x$($s.Height)"
     const out = runPowerShell(script, 5000);
     const [w, h] = (out || '1920x1080').split('x').map(Number);
     return { width: w || 1920, height: h || 1080 };
+  }
+  if (process.platform === 'darwin') {
+    try {
+      const out = execSync(`osascript -e 'tell application "Finder" to get bounds of window of desktop'`, { encoding: 'utf8', timeout: 3000 }).trim();
+      // Returns "0, 0, width, height"
+      const parts = out.split(',').map(s => Number(s.trim()));
+      if (parts.length === 4 && parts[2] && parts[3]) return { width: parts[2], height: parts[3] };
+    } catch {}
+  } else {
+    try {
+      const out = execSync(`xrandr 2>/dev/null | grep -m1 'current' | sed "s/.*current \\([0-9]*\\) x \\([0-9]*\\).*/\\1 \\2/"`, { encoding: 'utf8', timeout: 3000 }).trim();
+      const [w, h] = out.split(' ').map(Number);
+      if (w && h) return { width: w, height: h };
+    } catch {}
   }
   return { width: 1920, height: 1080 };
 }

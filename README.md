@@ -43,6 +43,28 @@ Then run from anywhere:
 axion
 ```
 
+### Linux computer-use dependencies (optional)
+
+Computer-use tools (screenshots, mouse, keyboard) require:
+
+```bash
+# Debian/Ubuntu
+sudo apt install xdotool scrot xclip
+
+# Arch
+sudo pacman -S xdotool scrot xclip
+```
+
+`xdotool` is the only hard requirement — `scrot` is for screenshots, `xclip` is a fallback for text input.
+
+### macOS computer-use dependencies (optional)
+
+```bash
+brew install cliclick   # for scroll support
+```
+
+Grant **Accessibility** and **Screen Recording** permissions to Terminal (or iTerm) in System Settings → Privacy & Security.
+
 ---
 
 ## API Keys
