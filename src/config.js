@@ -125,7 +125,7 @@ export const TOKEN_COSTS = {
   'claude-sonnet-4-6':            { in: 3,     out: 15   },
   'claude-opus-4-8':              { in: 15,    out: 75   },
   'claude-haiku-4-5-20251001':    { in: 0.8,   out: 4    },
-  'claude-fable-5':               { in: 3,     out: 15   },
+  'claude-fable-5':               { in: 10,    out: 50   },
   'gpt-4o':                       { in: 5,     out: 15   },
   'gpt-4o-mini':                  { in: 0.15,  out: 0.6  },
   'gemini-2.0-flash':             { in: 0.075, out: 0.3  },
