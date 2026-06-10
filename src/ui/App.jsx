@@ -64,6 +64,8 @@ const HELP_TEXT = `  Commands
   /thinking [on|off|<tokens>]   toggle extended thinking (all models)
   /adviser [model|auto|off]     set model used as adviser when agent gets stuck
   /run <cmd>                    run a shell command and feed output to the agent
+  !<cmd>                        shorthand for /run  e.g. !git status
+  /cost                         show session token usage and estimated cost
   /pr [context]                 draft a PR title+body from recent commits
   /computer [on|off]            toggle computer use (screen control)  (alias: /cu)
   /vision  <model>              set vision model for computer use (saved)
@@ -134,6 +136,8 @@ const HELP_TEXT = `  Commands
   /schedule enable/disable <n>  toggle a task
   /schedule results [name]      show result files
   /exit                         quit
+
+  Shortcuts: Ctrl+R search history · Ctrl+P cycle mode · Ctrl+T thinking · Ctrl+O expand · \\ + Enter newline
 
   Models: ${Object.keys(MODELS).join(' · ')}
 
@@ -597,6 +601,20 @@ export function App({
           lastUserMsgRef.current = '';
           clearLastSession(); // don't let --continue resurrect a cleared session
           return true;
+
+        case 'cost': {
+          const t = tokensRef.current;
+          const win = getContextWindow(model);
+          const pct = Math.round((t.total / win) * 100);
+          pushStatic({ type: 'info', content:
+            `  Session usage\n` +
+            `  ──────────────────────────────\n` +
+            `  model     ${model}\n` +
+            `  tokens    ${formatTokens(t.input) || 0} in · ${formatTokens(t.output) || 0} out · ${formatTokens(t.total) || 0} total\n` +
+            `  context   ${pct}% of ${formatTokens(win)}\n` +
+            `  est. cost ${sessionCost > 0 ? formatCost(sessionCost) : '$0.00'}` });
+          return true;
+        }
 
         case 'model':
           if (!arg) {
@@ -2079,7 +2097,7 @@ export function App({
       }
     },
     [model, mode, exit, pushStatic, addLive, finalizeTurn, runAgent,
-     goal, extThinking, thinkingBudget, systemOverride, staticMessages, liveMessages, tokens, computerUse, watchActive,
+     goal, extThinking, thinkingBudget, systemOverride, staticMessages, liveMessages, tokens, sessionCost, computerUse, watchActive,
      includedFiles]
   );
 
@@ -2087,6 +2105,11 @@ export function App({
 
   const handleSubmit = useCallback(
     async (input) => {
+      // `!cmd` is shorthand for /run cmd (skip in oauth-paste mode — tokens are opaque)
+      if (input.startsWith('!') && input.slice(1).trim() && inputMode !== 'oauth-paste') {
+        input = `/run ${input.slice(1).trim()}`;
+      }
+
       if (thinking) {
         if (input.startsWith('/')) {
           handleSlashCommand(input);

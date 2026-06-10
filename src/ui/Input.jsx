@@ -12,8 +12,17 @@ export function InputBox({
   const [history, setHistory] = useState(() => loadInputHistory());
   const [historyIdx, setHistoryIdx] = useState(-1);
   const [draft, setDraft] = useState(''); // preserves in-progress text while browsing history
+  const [search, setSearch] = useState(null); // Ctrl+R reverse search: { query, pos } | null
 
   const isActive = process.stdin.isTTY !== false;
+
+  // Matches for the active reverse search, most recent first
+  const searchMatches = search
+    ? history.filter((h) => h.includes(search.query)).reverse()
+    : [];
+  const searchMatch = search
+    ? searchMatches[Math.min(search.pos, Math.max(0, searchMatches.length - 1))] ?? null
+    : null;
 
   // Notify parent of value changes for autocomplete
   useEffect(() => { onChange?.(value); }, [value]);
@@ -26,6 +35,33 @@ export function InputBox({
       if (key.escape && interruptActive) { onInterrupt?.(); return; }
 
       if (disabled) return;
+
+      // Reverse history search mode (Ctrl+R) — handles all keys until exited
+      if (search) {
+        if (key.ctrl && input === 'r') {
+          // Cycle to next-older match
+          setSearch((s) => ({ ...s, pos: Math.min(s.pos + 1, Math.max(0, searchMatches.length - 1)) }));
+          return;
+        }
+        if (key.escape || (key.ctrl && (input === 'c' || input === 'g'))) {
+          setSearch(null); // cancel — keep whatever was being typed before
+          return;
+        }
+        if (key.backspace || key.delete) {
+          setSearch((s) => ({ query: s.query.slice(0, -1), pos: 0 }));
+          return;
+        }
+        if (key.return || key.upArrow || key.downArrow || key.leftArrow || key.rightArrow || key.tab) {
+          // Accept the current match into the input line (press Enter again to submit)
+          if (searchMatch) { setHistoryIdx(-1); set(searchMatch, searchMatch.length); }
+          setSearch(null);
+          return;
+        }
+        if (!key.ctrl && !key.meta && input) {
+          setSearch((s) => ({ query: s.query + input, pos: 0 }));
+        }
+        return;
+      }
 
       if (key.return) {
         // Trailing backslash before the cursor → newline instead of submit
@@ -126,6 +162,7 @@ export function InputBox({
             set(left + value.slice(cursor), left.length);
             return;
           }
+          case 'r': setSearch({ query: '', pos: 0 }); return;       // reverse history search
           case 'o': onToggleExpand?.();   return;
           case 't': onToggleThinking?.(); return;
           case 'p': onCycleMode?.();      return;
@@ -144,8 +181,19 @@ export function InputBox({
   );
 
   const isCmd = value.startsWith('/');
-  const borderColor = disabled ? 'gray' : isCmd ? 'yellow' : 'blueBright';
-  const promptColor = disabled ? 'gray' : isCmd ? 'yellow' : 'blueBright';
+  const borderColor = disabled ? 'gray' : search ? 'magenta' : isCmd ? 'yellow' : 'blueBright';
+  const promptColor = disabled ? 'gray' : search ? 'magenta' : isCmd ? 'yellow' : 'blueBright';
+
+  if (search) {
+    return (
+      <Box borderStyle="round" borderColor={borderColor} paddingX={1} marginX={1} marginTop={0}>
+        <Text color="magenta">(reverse-i-search) `{search.query}`: </Text>
+        {searchMatch
+          ? <Text color="white">{searchMatch}</Text>
+          : <Text color="gray" dimColor>{search.query ? 'no match' : 'type to search history'}</Text>}
+      </Box>
+    );
+  }
 
   return (
     <Box borderStyle="round" borderColor={borderColor} paddingX={1} marginX={1} marginTop={0}>
