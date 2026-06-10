@@ -12,6 +12,7 @@ import { DEFAULT_MODEL, DEFAULT_MODE, API_KEYS, CUSTOM_ENDPOINTS, IMAGE_GEN_MODE
 import { getSavedModel, getSavedMode, getSavedApiKeys, getSavedCustomEndpoints, getSavedImageModel } from './persist.js';
 import { MCP } from './agent/mcp.js';
 import { runDoctor } from './doctor.js';
+import { runUpdate } from './update.js';
 
 // Resolve the web server path relative to this bundle so /web and axion-serve work
 const _cliDir    = dirname(fileURLToPath(import.meta.url));
@@ -19,7 +20,7 @@ const WEB_SERVER = join(_cliDir, '../src/web/server.js');
 
 const argv = minimist(process.argv.slice(2), {
   string: ['model', 'mode'],
-  boolean: ['link', 'doctor', 'version', 'help'],
+  boolean: ['link', 'doctor', 'update', 'version', 'help'],
   alias: { m: 'model', M: 'mode', v: 'version', h: 'help' },
 });
 
@@ -41,6 +42,7 @@ Options:
   -M, --mode <name>   Mode: ask | plan | auto
       --link          Link CLI to a running axion-serve web session
       --doctor        Check dependencies, API keys, and environment
+      --update        Pull latest from GitHub and rebuild
   -v, --version       Print version and exit
   -h, --help          Show this help
 
@@ -55,6 +57,11 @@ Examples:
 
 if (argv.doctor) {
   runDoctor();
+  process.exit(0);
+}
+
+if (argv.update) {
+  runUpdate();
   process.exit(0);
 }
 
