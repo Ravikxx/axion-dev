@@ -173,12 +173,18 @@ function checkUpdates() {
   head('Updates');
   const rootDir = join(_doctorDir, '..');
   try {
-    const local  = execSync('git rev-parse HEAD',                  { cwd: rootDir, timeout: 3000 }).toString().trim();
-    const remote = execSync('git ls-remote origin HEAD',           { cwd: rootDir, timeout: 5000 }).toString().split('\t')[0].trim();
+    const local  = execSync('git rev-parse HEAD',        { cwd: rootDir, timeout: 3000 }).toString().trim();
+    const remote = execSync('git ls-remote origin HEAD', { cwd: rootDir, timeout: 5000 }).toString().split('\t')[0].trim();
     if (!remote) { warn('Could not reach GitHub — skipping update check'); return; }
-    if (local === remote) {
+    if (local === remote) { ok('Up to date'); return; }
+    // If the remote hash exists locally AND is already an ancestor of our HEAD, we're
+    // just ahead with unpushed commits — nothing to update.
+    try { execSync(`git cat-file -e ${remote}`, { cwd: rootDir, timeout: 1000 }); }
+    catch { warn(`Update available — run \x1b[1maxion --update\x1b[0m\x1b[33m to pull the latest`); return; }
+    try {
+      execSync(`git merge-base --is-ancestor ${remote} ${local}`, { cwd: rootDir, timeout: 3000 });
       ok('Up to date');
-    } else {
+    } catch {
       warn(`Update available — run \x1b[1maxion --update\x1b[0m\x1b[33m to pull the latest`);
     }
   } catch {
