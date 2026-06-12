@@ -86,14 +86,14 @@ export function SuggestionBox({ inputValue }) {
           <Text color={i === 0 ? 'yellow' : 'gray'} bold={i === 0}>
             {'/'}<Text color={i === 0 ? 'white' : 'gray'} bold={i === 0}>{s.cmd}</Text>
           </Text>
-          <Text color="gray" dimColor>{s.desc}</Text>
+          <Text color="gray">{s.desc}</Text>
           {i === 0 && matches.length > 1 && query !== s.cmd && (
-            <Text color="gray" dimColor>  tab to complete</Text>
+            <Text color="gray">  tab to complete</Text>
           )}
         </Box>
       ))}
       {matches.length > 6 && (
-        <Text color="gray" dimColor>  … {matches.length - 6} more — keep typing to filter</Text>
+        <Text color="gray">  … {matches.length - 6} more — keep typing to filter</Text>
       )}
     </Box>
   );

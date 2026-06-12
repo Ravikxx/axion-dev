@@ -23,9 +23,9 @@ export function ToolBlock({ name, input, output, success, pending, diff, expande
         <Text color={statusColor}>{dot}</Text>
         <Text color="cyan" bold>{name}</Text>
         {label ? <Text color="gray">{label}</Text> : null}
-        {pending && <Text color="yellow" dimColor> running…</Text>}
+        {pending && <Text color="yellow"> running…</Text>}
         {showDiff && stats && (
-          <Text color="gray" dimColor>
+          <Text color="gray">
             {stats.added > 0 ? <Text color="greenBright">+{stats.added}</Text> : null}
             {stats.added > 0 && stats.removed > 0 ? <Text color="gray"> </Text> : null}
             {stats.removed > 0 ? <Text color="red">-{stats.removed}</Text> : null}
@@ -41,7 +41,7 @@ export function ToolBlock({ name, input, output, success, pending, diff, expande
       {/* Plain output for non-diff tools */}
       {!pending && output && !showDiff && (
         <Box marginLeft={2} flexDirection="column">
-          <Text color={success === false ? 'red' : 'gray'} dimColor>
+          <Text color={success === false ? 'red' : 'gray'}>
             {formatOutput(output)}
           </Text>
         </Box>
@@ -50,7 +50,7 @@ export function ToolBlock({ name, input, output, success, pending, diff, expande
       {/* Expand hint when there's a diff */}
       {showDiff && !expanded && (
         <Box marginLeft={2}>
-          <Text color="gray" dimColor>Ctrl+O to expand</Text>
+          <Text color="gray">Ctrl+O to expand</Text>
         </Box>
       )}
     </Box>
@@ -72,12 +72,12 @@ function ThinkingStep({ input, pending }) {
       <Box gap={1}>
         <Text color="magenta">{dot}</Text>
         <Text color="magenta" bold>Thought {num}/{total}</Text>
-        {badge ? <Text color="gray" dimColor>{badge}</Text> : null}
-        {pending && <Text color="yellow" dimColor> thinking…</Text>}
+        {badge ? <Text color="gray">{badge}</Text> : null}
+        {pending && <Text color="yellow"> thinking…</Text>}
       </Box>
       {thought && (
         <Box marginLeft={2}>
-          <Text color="gray" dimColor>{truncate(thought, 200)}</Text>
+          <Text color="gray">{truncate(thought, 200)}</Text>
         </Box>
       )}
     </Box>
@@ -94,7 +94,7 @@ function DiffView({ diff, expanded }) {
         if (entry.type === 'gap') {
           return (
             <Box key={i}>
-              <Text color="gray" dimColor>{'·'.repeat(lineNoW)}  … {entry.count} unchanged line{entry.count !== 1 ? 's' : ''}</Text>
+              <Text color="gray">{'·'.repeat(lineNoW)}  … {entry.count} unchanged line{entry.count !== 1 ? 's' : ''}</Text>
             </Box>
           );
         }
@@ -107,9 +107,9 @@ function DiffView({ diff, expanded }) {
 
         return (
           <Box key={i}>
-            <Text color="gray" dimColor>{lineNoStr} </Text>
-            <Text color={color} dimColor={dim} bold={!dim}>{prefix} </Text>
-            <Text color={color} dimColor={dim}>{line}</Text>
+            <Text color="gray">{lineNoStr} </Text>
+            <Text color={color} bold={!dim}>{prefix} </Text>
+            <Text color={color}>{line}</Text>
           </Box>
         );
       })}

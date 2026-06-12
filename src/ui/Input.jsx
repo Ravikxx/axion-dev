@@ -190,7 +190,7 @@ export function InputBox({
         <Text color="magenta">(reverse-i-search) `{search.query}`: </Text>
         {searchMatch
           ? <Text color="white">{searchMatch}</Text>
-          : <Text color="gray" dimColor>{search.query ? 'no match' : 'type to search history'}</Text>}
+          : <Text color="gray">{search.query ? 'no match' : 'type to search history'}</Text>}
       </Box>
     );
   }
@@ -208,7 +208,7 @@ export function InputBox({
       ) : (
         <Text>
           {!disabled && <Text inverse color="white"> </Text>}
-          <Text color="gray" dimColor>{placeholder || ''}</Text>
+          <Text color="gray">{placeholder || ''}</Text>
         </Text>
       )}
     </Box>

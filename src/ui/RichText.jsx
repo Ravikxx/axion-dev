@@ -81,7 +81,7 @@ const LANG_ALIASES = {
 };
 
 const TOKEN_COLORS = {
-  comment: { color: 'gray', dim: true },
+  comment: { color: 'gray' },
   string:  { color: 'green' },
   keyword: { color: 'magentaBright' },
   number:  { color: 'yellow' },
@@ -153,7 +153,7 @@ function RichLine({ text }) {
 
   // Horizontal rule
   if (/^[-*_]{3,}$/.test(text.trim())) {
-    return <Text color="gray" dimColor>{'─'.repeat(40)}</Text>;
+    return <Text color="gray">{'─'.repeat(40)}</Text>;
   }
 
   // Unordered list
@@ -184,7 +184,7 @@ function RichLine({ text }) {
   if (text.startsWith('> ')) {
     return (
       <Text>
-        <Text color="gray" dimColor>│ </Text>
+        <Text color="gray">│ </Text>
         <Text color="gray"><InlineTokens tokens={parseInline(text.slice(2))} /></Text>
       </Text>
     );
@@ -205,7 +205,7 @@ export function RichText({ children }) {
           return (
             <Box key={i} flexDirection="column" marginY={0} paddingX={1} borderStyle="single" borderColor="gray">
               {block.lang && (
-                <Text color="gray" dimColor>{block.lang}</Text>
+                <Text color="gray">{block.lang}</Text>
               )}
               {block.text.split('\n').map((line, j) => (
                 <CodeLine key={j} line={line} lang={(block.lang || '').toLowerCase()} />

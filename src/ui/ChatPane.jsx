@@ -9,7 +9,7 @@ export function MessageRow({ msg, expanded = false, thinkingExpanded = false }) 
       return (
         <Box marginTop={1} gap={1} paddingX={1}>
           <Text color="blueBright" bold>you</Text>
-          <Text color="gray" dimColor>›</Text>
+          <Text color="gray">›</Text>
           <Text color="white">{msg.content}</Text>
         </Box>
       );
@@ -41,15 +41,15 @@ export function MessageRow({ msg, expanded = false, thinkingExpanded = false }) 
           <Box gap={1}>
             <Text color="magenta">◈</Text>
             <Text color="magenta" bold>thinking</Text>
-            <Text color="gray" dimColor>·</Text>
-            <Text color="gray" dimColor>{sizeLabel}</Text>
-            <Text color="gray" dimColor>·</Text>
-            <Text color="gray" dimColor>{collapsed ? 'Ctrl+T to expand' : 'Ctrl+T to collapse'}</Text>
+            <Text color="gray">·</Text>
+            <Text color="gray">{sizeLabel}</Text>
+            <Text color="gray">·</Text>
+            <Text color="gray">{collapsed ? 'Ctrl+T to expand' : 'Ctrl+T to collapse'}</Text>
           </Box>
           {/* Collapsed: one-line preview only */}
           {collapsed && previewTrunc && (
             <Box marginLeft={3}>
-              <Text color="magenta" dimColor italic>{previewTrunc}</Text>
+              <Text color="magenta" italic>{previewTrunc}</Text>
             </Box>
           )}
           {/* Expanded: full content rendered as markdown */}
@@ -83,9 +83,9 @@ export function MessageRow({ msg, expanded = false, thinkingExpanded = false }) 
         <Box marginTop={0} paddingX={1} gap={1}>
           <Text color="cyan">📨</Text>
           <Text color="cyan" bold>{msg.from}</Text>
-          <Text color="gray" dimColor>→</Text>
+          <Text color="gray">→</Text>
           <Text color="cyan" bold>{msg.to}</Text>
-          <Text color="gray" dimColor>  "{msg.content}"</Text>
+          <Text color="gray">  "{msg.content}"</Text>
         </Box>
       );
 
@@ -108,7 +108,7 @@ export function MessageRow({ msg, expanded = false, thinkingExpanded = false }) 
           <Box gap={1}>
             <Text color="yellow">◈</Text>
             <Text color="yellow" bold>Adviser</Text>
-            <Text color="gray" dimColor>{msg.label || ''}</Text>
+            <Text color="gray">{msg.label || ''}</Text>
           </Box>
           <Box marginLeft={2} flexDirection="column">
             <RichText>{msg.content}</RichText>
@@ -158,7 +158,7 @@ export function MessageRow({ msg, expanded = false, thinkingExpanded = false }) 
     case 'info':
       return (
         <Box marginTop={0} paddingX={1}>
-          <Text color="gray" dimColor>{msg.content}</Text>
+          <Text color="gray">{msg.content}</Text>
         </Box>
       );
 

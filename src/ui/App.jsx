@@ -215,18 +215,18 @@ function WelcomeBanner({ model, mode }) {
         <Box flexDirection="column" minWidth={28}>
           <Box gap={1} marginBottom={0}>
             <Text color={accent()} bold>✻ Axion</Text>
-            <Text color="gray" dimColor>by Axion Labs</Text>
+            <Text color="gray">by Axion Labs</Text>
           </Box>
           <Box gap={1} marginLeft={2}>
-            <Text color="gray" dimColor>model </Text>
+            <Text color="gray">model </Text>
             <Text color={accent()}>{model}</Text>
           </Box>
           <Box gap={1} marginLeft={2}>
-            <Text color="gray" dimColor>mode  </Text>
+            <Text color="gray">mode  </Text>
             <Text color={modeColor}>{modeLabel(mode)}</Text>
           </Box>
           <Box marginLeft={2} marginTop={0}>
-            <Text color="gray" dimColor>dir   {CWD}</Text>
+            <Text color="gray">dir   {CWD}</Text>
           </Box>
         </Box>
 
@@ -236,7 +236,7 @@ function WelcomeBanner({ model, mode }) {
             <>
               <Text color="yellowBright" bold>Welcome to Axion!</Text>
               <Text color="gray">  You're on <Text color="cyan">Veil</Text> — no API key needed, start chatting now.</Text>
-              <Text color="yellow" dimColor>  ⚠ Veil is free but slow — responses can take up to 100s. Not broken!</Text>
+              <Text color="yellow">  ⚠ Veil is free but slow — responses can take up to 100s. Not broken!</Text>
               <Text color="gray">  To use Claude/GPT/Gemini: <Text color="white">/api claude sk-ant-...</Text></Text>
               <Text color="gray">  Switch models anytime:    <Text color="white">/model claude</Text></Text>
               <Text color="gray">  Browse MCP integrations:  <Text color="white">/mcp browse</Text></Text>
@@ -256,7 +256,7 @@ function WelcomeBanner({ model, mode }) {
           <Box marginTop={1} flexDirection="column">
             <Text color={accent()} bold>  ◈ News</Text>
             <Text color="gray">  <Text color="greenBright" bold>NEW</Text> Lumen is live — Axion Labs' own 8B model</Text>
-            <Text color="gray" dimColor>      fine-tuned by RavikxxBGamin · free · no key needed</Text>
+            <Text color="gray">      fine-tuned by RavikxxBGamin · free · no key needed</Text>
             <Text color="gray">      <Text color="white">/model lumen</Text> to try it</Text>
           </Box>
         </Box>
@@ -2274,17 +2274,17 @@ export function App({
       {/* ── Status bar ─────────────────────────────────────────────── */}
       <Box marginX={1} marginTop={1} justifyContent="space-between">
         <Text>
-          <Text color="gray" dimColor>── </Text>
+          <Text color="gray">── </Text>
           <Text color={accent()} bold>Axion</Text>
-          <Text color="gray" dimColor>  {CWD}  </Text>
+          <Text color="gray">  {CWD}  </Text>
           <Text color="cyan">{model}</Text>
-          <Text color="gray" dimColor>  </Text>
+          <Text color="gray">  </Text>
           <Text color={modeColor} bold>{modeLabel(mode)}</Text>
-          {tokStr && <Text color="gray" dimColor>  {tokStr} tok</Text>}
-          {gauge  && <Text color={gauge.color} dimColor>  {gauge.bar} {Math.round(gauge.pct * 100)}%</Text>}
-          {sessionCostStr && <Text color="gray" dimColor>  session {sessionCostStr}</Text>}
+          {tokStr && <Text color="gray">  {tokStr} tok</Text>}
+          {gauge  && <Text color={gauge.color}>  {gauge.bar} {Math.round(gauge.pct * 100)}%</Text>}
+          {sessionCostStr && <Text color="gray">  session {sessionCostStr}</Text>}
         </Text>
-        {hintRight ? <Text color="gray" dimColor>{hintRight}</Text> : null}
+        {hintRight ? <Text color="gray">{hintRight}</Text> : null}
       </Box>
 
       {/* ── Thinking label (spinner + word on same line) ────────────── */}
@@ -2292,8 +2292,8 @@ export function App({
         <Box marginX={2} gap={1}>
           <Text color="greenBright"><Spinner type="dots" /></Text>
           <Text color="greenBright">{thinkingWord}…</Text>
-          <Text color="gray" dimColor>{String(Math.floor(thinkingElapsed / 60)).padStart(2, '0')}:{String(thinkingElapsed % 60).padStart(2, '0')}</Text>
-          <Text color="gray" dimColor>esc to interrupt</Text>
+          <Text color="gray">{String(Math.floor(thinkingElapsed / 60)).padStart(2, '0')}:{String(thinkingElapsed % 60).padStart(2, '0')}</Text>
+          <Text color="gray">esc to interrupt</Text>
         </Box>
       )}
 
@@ -2304,7 +2304,7 @@ export function App({
           <Text color="white">run</Text>
           <Text color="cyan" bold>{pendingConfirm.name}</Text>
           {pendingConfirm.label ? <Text color="gray">{pendingConfirm.label}</Text> : null}
-          <Text color="gray" dimColor>(y/n)</Text>
+          <Text color="gray">(y/n)</Text>
           <YesNoPrompt onAnswer={handleConfirmAnswer} />
         </Box>
       )}
@@ -2312,7 +2312,7 @@ export function App({
         <Box marginX={2} marginTop={0} gap={1}>
           <Text color="yellow">?</Text>
           <Text color="white">execute this plan?</Text>
-          <Text color="gray" dimColor>(y/n)</Text>
+          <Text color="gray">(y/n)</Text>
           <YesNoPrompt onAnswer={handleConfirmAnswer} />
         </Box>
       )}
@@ -2324,8 +2324,8 @@ export function App({
 
       {/* ── Hint bar ────────────────────────────────────────────────── */}
       <Box marginX={2} justifyContent="space-between">
-        <Text color="gray" dimColor>{hintLeft}</Text>
-        {systemOverride && <Text color="gray" dimColor>sys: on</Text>}
+        <Text color="gray">{hintLeft}</Text>
+        {systemOverride && <Text color="gray">sys: on</Text>}
       </Box>
 
       {/* ── Input ───────────────────────────────────────────────────── */}
