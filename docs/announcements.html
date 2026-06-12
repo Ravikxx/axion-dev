@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Announcements — Axion Labs</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f4efe6;
+      --bg-card: #faf7f2;
+      --border: #e0d8cc;
+      --text: #1a1209;
+      --text-muted: #6b5e4e;
+      --accent: #e8602c;
+      --accent-light: #fdf0ea;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    nav {
+      background: #1a1209;
+      padding: 0 32px;
+      display: flex;
+      align-items: center;
+      height: 56px;
+      gap: 24px;
+    }
+    nav a { color: #c9b99a; text-decoration: none; font-size: 14px; transition: color 0.2s; }
+    nav a:hover { color: #f4efe6; }
+    nav a.brand { color: #f4efe6; font-weight: 600; font-size: 16px; margin-right: 16px; }
+
+    .page-header {
+      background: #1a1209;
+      color: #f4efe6;
+      padding: 56px 32px 48px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .page-header .section-tag {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 12px;
+    }
+    .page-header h1 {
+      font-size: 40px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 10px;
+    }
+    .page-header p { color: #8b7355; font-size: 16px; }
+
+    main {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 56px 32px 80px;
+    }
+
+    .announcement {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px 32px;
+      margin-bottom: 20px;
+      transition: box-shadow 0.2s;
+    }
+    .announcement:hover {
+      box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+    }
+
+    .ann-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+    .ann-tag {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 4px;
+    }
+    .ann-tag.release { background: var(--accent-light); color: var(--accent); }
+    .ann-tag.update  { background: #e8f4ea; color: #2d7a3a; }
+    .ann-tag.notice  { background: #f4f0e8; color: #6b5e4e; }
+
+    .ann-date { font-size: 12px; color: var(--text-muted); }
+
+    .announcement h2 {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      margin-bottom: 8px;
+    }
+    .announcement h2 a {
+      color: inherit;
+      text-decoration: none;
+    }
+    .announcement h2 a:hover { color: var(--accent); }
+
+    .announcement p {
+      font-size: 15px;
+      color: var(--text-muted);
+      line-height: 1.65;
+    }
+
+    .ann-footer {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .ann-link {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent);
+      text-decoration: none;
+    }
+    .ann-link:hover { text-decoration: underline; }
+
+    .empty-future {
+      text-align: center;
+      padding: 48px 0 0;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    footer {
+      background: #1a1209;
+      color: #6b5e4e;
+      text-align: center;
+      padding: 32px;
+      font-size: 13px;
+    }
+    footer a { color: #8b7355; text-decoration: none; }
+    footer a:hover { color: #c9b99a; }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="brand">◈ Axion</a>
+  <a href="/announcements" style="color:#f4efe6">Announcements</a>
+  <a href="/lumen-12">Lumen 1.2</a>
+  <a href="https://github.com/Ravikxx/axion">GitHub</a>
+</nav>
+
+<div class="page-header">
+  <div class="section-tag">Axion Labs</div>
+  <h1>Announcements</h1>
+  <p>Updates, releases, and news from the Axion team.</p>
+</div>
+
+<main>
+
+  <!-- MOST RECENT FIRST -->
+
+  <div class="announcement">
+    <div class="ann-meta">
+      <span class="ann-tag release">Release</span>
+      <span class="ann-date">June 12, 2026</span>
+    </div>
+    <h2><a href="/lumen-12">Lumen 1.2 — Our Best Model Yet</a></h2>
+    <p>
+      We're excited to announce Lumen 1.2, a significant leap forward in capability over our previous Veil model.
+      Lumen 1.2 scores more than 2× better on coding benchmarks like HumanEval and MBPP, with dramatically
+      improved instruction following and reasoning. Pull the latest from GitHub to start using it today.
+    </p>
+    <div class="ann-footer">
+      <a class="ann-link" href="/lumen-12">See benchmarks →</a>
+      <a class="ann-link" href="https://github.com/Ravikxx/axion">GitHub →</a>
+    </div>
+  </div>
+
+  <!-- Placeholder — future announcements go above this comment -->
+
+  <div class="empty-future">
+    <p>More announcements coming soon. Follow us on <a href="https://github.com/Ravikxx/axion" style="color:var(--accent)">GitHub</a> for updates.</p>
+  </div>
+
+</main>
+
+<footer>
+  <p>© 2026 Axion Labs · <a href="/">Home</a> · <a href="/privacy">Privacy</a> · <a href="https://github.com/Ravikxx/axion">GitHub</a></p>
+</footer>
+
+</body>
+</html>
