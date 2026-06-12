@@ -155,6 +155,98 @@ export function undoLastBackup() {
 
 export function undoStackSize() { return _undoStack.length; }
 
+// ── Tool permission allowlist (per project, for ask mode) ─────────────────────
+// Keys are tool names, or "run_command:<binary>" for shell commands.
+
+export function getAllowedTools() {
+  return (_cfg.allowedTools || {})[process.cwd()] || [];
+}
+
+export function allowTool(key) {
+  if (!_cfg.allowedTools) _cfg.allowedTools = {};
+  const list = _cfg.allowedTools[process.cwd()] || [];
+  if (!list.includes(key)) list.push(key);
+  _cfg.allowedTools[process.cwd()] = list;
+  save(_cfg);
+}
+
+export function clearAllowedTools() {
+  if (_cfg.allowedTools) delete _cfg.allowedTools[process.cwd()];
+  save(_cfg);
+}
+
+// ── Custom slash commands ─────────────────────────────────────────────────────
+// Markdown files in ~/.axion/commands/ and ./.axion/commands/ become slash
+// commands: greet.md → /greet. $ARGUMENTS in the body is replaced with args.
+// Read fresh on each lookup so edits apply without restarting.
+
+export function getCustomCommands() {
+  const out = {};
+  for (const dir of [join(DIR, 'commands'), join(process.cwd(), '.axion', 'commands')]) {
+    try {
+      for (const f of readdirSync(dir)) {
+        if (!f.endsWith('.md')) continue;
+        try {
+          const body = readFileSync(join(dir, f), 'utf8').trim();
+          if (body) out[f.slice(0, -3).toLowerCase()] = body;
+        } catch {}
+      }
+    } catch {}
+  }
+  return out;
+}
+
+// ── Checkpoints (per-turn file snapshots for /rewind) ─────────────────────────
+
+const _checkpoints = [];
+const MAX_CHECKPOINTS = 20;
+let _activeCheckpoint = null;
+
+// Called at the start of each user turn. Empty checkpoints are replaced.
+export function beginCheckpoint(label) {
+  if (_activeCheckpoint && !_activeCheckpoint.files.size && !_activeCheckpoint.created.size) {
+    _checkpoints.pop();
+  }
+  _activeCheckpoint = { label: String(label || '').slice(0, 60), ts: Date.now(), files: new Map(), created: new Set() };
+  _checkpoints.push(_activeCheckpoint);
+  if (_checkpoints.length > MAX_CHECKPOINTS) _checkpoints.shift();
+}
+
+// Called from tools on every file write/delete. oldContent === null marks a
+// newly created file (rewind deletes it instead of restoring content).
+export function recordFileChange(path, oldContent) {
+  if (!_activeCheckpoint) return;
+  if (_activeCheckpoint.files.has(path) || _activeCheckpoint.created.has(path)) return;
+  if (oldContent == null) _activeCheckpoint.created.add(path);
+  else _activeCheckpoint.files.set(path, oldContent);
+}
+
+export function listCheckpoints() {
+  return _checkpoints
+    .map((c) => ({ label: c.label, ts: c.ts, fileCount: c.files.size + c.created.size }))
+    .reverse(); // most recent first
+}
+
+// Restore the last `count` checkpoints (most recent first, so earlier
+// checkpoints overwrite with progressively older content).
+export function rewindCheckpoints(count = 1) {
+  const restored = new Set();
+  const deleted  = new Set();
+  let undone = 0;
+  while (undone < count && _checkpoints.length) {
+    const c = _checkpoints.pop();
+    for (const [path, content] of c.files) {
+      try { writeFileSync(path, content, 'utf8'); restored.add(path); } catch {}
+    }
+    for (const path of c.created) {
+      try { unlinkSync(path); deleted.add(path); restored.delete(path); } catch {}
+    }
+    undone++;
+  }
+  _activeCheckpoint = null;
+  return { undone, restored: [...restored], deleted: [...deleted] };
+}
+
 // ── Chat save/resume ──────────────────────────────────────────────────────────
 
 const CHATS_DIR = join(DIR, 'chats');

@@ -184,9 +184,21 @@ Switch with `/mode auto` or press `Ctrl+P` to cycle.
 /resume <name>                resume a saved chat
 /export <filename>            export chat as markdown
 /undo                         restore last overwritten file
+/rewind [list|<n>]            undo the last n turns' file changes
+/permissions [clear]          list/reset always-allowed tools ("a" on confirms)
 /clear                        clear history
 /exit                         quit
 ```
+
+---
+
+## Project memory & customization
+
+- **AXION.md** — put persistent project instructions in `./AXION.md`, `./.axion/AXION.md`, or `~/.axion/AXION.md`; they're loaded into every session's system prompt.
+- **@file mentions** — type `@src/file.js` in any message to pin that file into context (tab-completes paths).
+- **Custom slash commands** — drop `.md` files in `~/.axion/commands/` or `./.axion/commands/`; `review-pr.md` becomes `/review-pr`, and `$ARGUMENTS` in the body is replaced with whatever follows the command.
+- **Message queueing** — type while the agent is working; messages queue and send when the turn finishes.
+- **Background tasks** — the agent can start dev servers/watchers with `run_command background=true` and poll them with `check_task`.
 
 ---
 

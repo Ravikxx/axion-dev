@@ -1,11 +1,14 @@
 import React from 'react';
 import { Box, Text } from 'ink';
+import { readdirSync } from 'fs';
+import { getCustomCommands } from '../persist.js';
 
 export const COMMANDS = [
   { cmd: 'help',            desc: 'show all commands' },
   { cmd: 'model',           desc: '<name|id>  switch model' },
   { cmd: 'mode',            desc: '<name>  ask · plan · bypass' },
   { cmd: 'theme',           desc: '[name]  switch accent color (no args = list)' },
+  { cmd: 'permissions',     desc: '[clear]  list/reset always-allowed tools' },
   { cmd: 'api',             desc: '<model> <key>  set API key' },
   { cmd: 'endpoint',        desc: '<name> <url> [model] [key]  add/list custom endpoints' },
   { cmd: 'thinking',        desc: '[on|off|<tokens>]  toggle extended thinking' },
@@ -35,6 +38,7 @@ export const COMMANDS = [
   { cmd: 'copy-block',      desc: '<n>  copy Nth code block from last response' },
   { cmd: 'export',          desc: '<filename>  save chat as markdown' },
   { cmd: 'undo',            desc: 'restore last overwritten/deleted file' },
+  { cmd: 'rewind',          desc: '[list|<n>]  undo last n turns of file changes' },
   { cmd: 'save',            desc: '<name>  save current chat' },
   { cmd: 'resume',          desc: '<name>  resume saved chat  (no args = list)' },
   { cmd: 'search-chats',    desc: '<query>  search across all saved chats' },
@@ -52,12 +56,43 @@ export const COMMANDS = [
 
 export function getSuggestions(inputValue) {
   if (!inputValue.startsWith('/')) return [];
-  const query = inputValue.slice(1).split(' ')[0].toLowerCase();
-  if (query === '') return COMMANDS;
-  return COMMANDS.filter((c) => c.cmd.startsWith(query));
+  const query  = inputValue.slice(1).split(' ')[0].toLowerCase();
+  const custom = Object.keys(getCustomCommands())
+    .filter((name) => !COMMANDS.some((c) => c.cmd === name))
+    .map((name) => ({ cmd: name, desc: 'custom command (.axion/commands)' }));
+  const all = [...COMMANDS, ...custom];
+  if (query === '') return all;
+  return all.filter((c) => c.cmd.startsWith(query));
+}
+
+// Complete an @path mention at the end of the input. Returns the full new
+// input string, or null if nothing to complete.
+function completeAtMention(inputValue) {
+  const m = inputValue.match(/(^|\s)@([^\s@]*)$/);
+  if (!m) return null;
+  const partial = m[2];
+  const slash   = partial.lastIndexOf('/');
+  const dir     = slash >= 0 ? partial.slice(0, slash + 1) : '';
+  const base    = slash >= 0 ? partial.slice(slash + 1) : partial;
+  try {
+    const entries = readdirSync(dir || '.', { withFileTypes: true })
+      .filter(e => e.name.startsWith(base))
+      .filter(e => base.startsWith('.') || !e.name.startsWith('.'))
+      .filter(e => e.name !== 'node_modules')
+      .sort((a, b) => a.name.localeCompare(b.name));
+    if (!entries.length) return null;
+    const e = entries[0];
+    const completed = dir + e.name + (e.isDirectory() ? '/' : ' ');
+    if (dir + e.name === partial) return null; // already complete
+    return inputValue.slice(0, inputValue.length - partial.length) + completed;
+  } catch {
+    return null;
+  }
 }
 
 export function getTabCompletion(inputValue) {
+  const atCompletion = completeAtMention(inputValue);
+  if (atCompletion) return atCompletion;
   const matches = getSuggestions(inputValue);
   if (!matches.length) return null;
   const top   = matches[0];

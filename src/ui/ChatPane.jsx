@@ -19,10 +19,7 @@ export function MessageRow({ msg, expanded = false, thinkingExpanded = false }) 
         <Box marginTop={1} flexDirection="column" paddingX={1}>
           <Text color="greenBright" bold>Axion</Text>
           <Box marginLeft={2} flexDirection="column">
-            {msg.streaming
-              ? <Text color="white">{msg.content}<Text color="greenBright">▋</Text></Text>
-              : <RichText>{msg.content}</RichText>
-            }
+            <RichText>{msg.streaming ? msg.content + ' ▋' : msg.content}</RichText>
           </Box>
         </Box>
       );

@@ -13,12 +13,26 @@ import { getMemories, getLearnedInstructions } from '../persist.js';
 import { MCP } from './mcp.js';
 import { GOOGLE_TOOL_DEFINITIONS, GOOGLE_TOOL_DEFINITIONS_OPENAI } from './google.js';
 import { getOAuthToken } from '../oauth/oauth.js';
+import { homedir } from 'os';
 
 // ── Project context (read once at startup) ────────────────────────────────────
 
 function buildProjectContext() {
   const hints = [];
   const cwd   = process.cwd();
+
+  // AXION.md — persistent project instructions (like CLAUDE.md).
+  // Global (~/.axion/AXION.md) first, then project root, then ./.axion/AXION.md.
+  for (const p of [
+    resolve(homedir(), '.axion', 'AXION.md'),
+    resolve(cwd, 'AXION.md'),
+    resolve(cwd, '.axion', 'AXION.md'),
+  ]) {
+    try {
+      const text = readFileSync(p, 'utf8').trim();
+      if (text) hints.push(`Instructions from ${p} (follow these):\n${text.slice(0, 8000)}`);
+    } catch {}
+  }
 
   // package.json
   try {
@@ -478,6 +492,12 @@ IMPORTANT RULES:
         { role: 'user', content: `[Conversation summary — continuing from here]: ${summary}` },
         { role: 'assistant', content: 'Got it. I have the full context and can continue from where we left off.' },
       ];
+      // Recalibrate token counters to the new, small history so the context
+      // gauge reflects reality (otherwise auto-compact would re-trigger forever)
+      this.inputTokens  = Math.round(summary.length / 4) + 200;
+      this.outputTokens = 0;
+      this.totalTokens  = this.inputTokens;
+      this.onTokens({ total: this.totalTokens, input: this.inputTokens, output: this.outputTokens });
     }
     return summary;
   }

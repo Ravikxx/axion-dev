@@ -93,12 +93,16 @@ const TOKEN_COLORS = {
 export function highlightLine(line, lang) {
   const key  = LANG_ALIASES[lang] || lang;
   const kw   = new Set((KEYWORDS[key] || KEYWORDS.js).split(' '));
-  const isSh = key === 'sh';
   const tokens = [];
-  // comment | string | word | number
-  const re = isSh
-    ? /(#.*$)|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)|([A-Za-z_][A-Za-z0-9_]*)|(\b\d[\d_]*\.?\d*\b)/gm
-    : /(\/\/.*$|#.*$|--.*$)|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)|([A-Za-z_][A-Za-z0-9_]*)|(\b\d[\d_]*\.?\d*\b)/gm;
+  // comment | string | word | number — comment marker depends on language
+  const commentRe =
+    key === 'py' || key === 'sh' ? '#.*$'
+    : key === 'sql'              ? '--.*$'
+    : '\\/\\/.*$';
+  const re = new RegExp(
+    `(${commentRe})|("(?:[^"\\\\]|\\\\.)*"|'(?:[^'\\\\]|\\\\.)*'|\`(?:[^\`\\\\]|\\\\.)*\`)|([A-Za-z_][A-Za-z0-9_]*)|(\\b\\d[\\d_]*\\.?\\d*\\b)`,
+    'gm'
+  );
   let last = 0, m;
   while ((m = re.exec(line)) !== null) {
     if (m.index > last) tokens.push({ type: 'plain', text: line.slice(last, m.index) });

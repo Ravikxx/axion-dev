@@ -220,6 +220,7 @@ export function YesNoPrompt({ onAnswer }) {
   useInput((input, key) => {
     const ch = input.toLowerCase();
     if (ch === 'y' || key.return) onAnswer(true);
+    else if (ch === 'a') onAnswer('always');
     else if (ch === 'n' || key.escape) onAnswer(false);
   }, { isActive });
   return null;

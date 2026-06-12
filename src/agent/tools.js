@@ -1,14 +1,23 @@
 import { readFileSync, writeFileSync, readdirSync, statSync, existsSync, unlinkSync, renameSync, mkdirSync } from 'fs';
-import { execSync } from 'child_process';
+import { execSync, spawn } from 'child_process';
 import { relative, resolve, dirname, basename, extname } from 'path';
 import { diffLines } from '../utils/diff.js';
-import { backupFile } from '../persist.js';
+import { backupFile, recordFileChange } from '../persist.js';
 import { API_KEYS } from '../config.js';
 import { BUS } from './bus.js';
 import { captureScreen, captureScreenAnnotated, uiaClickElement, mouseClick, typeText, pressKey, scrollAt, getScreenSize, ocrFindText, cropScreenRegion, MACRO_STATE } from './computer.js';
 import { analyzeScreen, parseCoordinates } from './vision.js';
 import { executeGoogleTool, GOOGLE_TOOL_DEFINITIONS, GOOGLE_TOOL_DEFINITIONS_OPENAI } from './google.js';
 import { getOAuthToken } from '../oauth/oauth.js';
+
+// Background tasks started via run_command background=true
+const BG_TASKS = new Map();
+let _bgCounter = 0;
+process.on('exit', () => {
+  for (const t of BG_TASKS.values()) {
+    if (t.exitCode === null) { try { t.proc.kill('SIGTERM'); } catch {} }
+  }
+});
 
 import { join } from 'path';
 
@@ -147,11 +156,26 @@ export const TOOL_DEFINITIONS = [
   },
   {
     name: 'run_command',
-    description: 'Run a shell command and return stdout/stderr.',
+    description: 'Run a shell command and return stdout/stderr. Set background=true for long-running commands (dev servers, watchers) — returns a task id immediately; use check_task to read output later.',
     input_schema: {
       type: 'object',
-      properties: { command: { type: 'string' } },
+      properties: {
+        command: { type: 'string' },
+        background: { type: 'boolean', description: 'Run detached and return a task id immediately' },
+      },
       required: ['command'],
+    },
+  },
+  {
+    name: 'check_task',
+    description: 'Check a background task started with run_command background=true. No id lists all tasks. Set kill=true to stop one.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'Task id; omit to list all' },
+        kill: { type: 'boolean', description: 'Stop the task' },
+      },
+      required: [],
     },
   },
   {
@@ -390,6 +414,7 @@ export async function executeTool(name, input, { agentLabel = 'main', onNotify =
         let oldContent = '';
         try { oldContent = readFileSync(absPath, 'utf8'); } catch {}
         if (oldContent) backupFile(absPath, oldContent);
+        recordFileChange(absPath, existsSync(absPath) ? oldContent : null);
         const destDir = dirname(absPath);
         if (!existsSync(destDir)) mkdirSync(destDir, { recursive: true });
         writeFileSync(absPath, input.content, 'utf8');
@@ -404,6 +429,7 @@ export async function executeTool(name, input, { agentLabel = 'main', onNotify =
         const count = (oldContent.split(input.find).length - 1);
         if (count === 0) return { success: false, output: `String not found in ${relPath(input.path)}` };
         backupFile(absPath, oldContent);
+        recordFileChange(absPath, oldContent);
         // Use a function replacer to prevent JS from interpreting $& $1 $` $' etc. in the replacement string
         const newContent = input.all
           ? oldContent.split(input.find).join(input.replace)
@@ -419,6 +445,7 @@ export async function executeTool(name, input, { agentLabel = 'main', onNotify =
         if (!existsSync(absPath)) return { success: false, output: `File not found: ${relPath(input.path)}` };
         const content = readFileSync(absPath, 'utf8');
         backupFile(absPath, content);
+        recordFileChange(absPath, content);
         unlinkSync(absPath);
         return { success: true, output: `Deleted ${relPath(input.path)} (backup kept — use /undo to restore)` };
       }
@@ -491,6 +518,20 @@ export async function executeTool(name, input, { agentLabel = 'main', onNotify =
           cwd = target;
           return { success: true, output: `(cwd → ${cwd})` };
         }
+        if (input.background) {
+          const id = `task-${++_bgCounter}`;
+          const proc = spawn(input.command, { cwd, shell: true, detached: false });
+          const task = { id, command: input.command, proc, output: '', exitCode: null, startedAt: Date.now() };
+          const append = (chunk) => {
+            task.output = (task.output + chunk.toString()).slice(-20000); // keep last 20k chars
+          };
+          proc.stdout.on('data', append);
+          proc.stderr.on('data', append);
+          proc.on('close', (code) => { task.exitCode = code; });
+          proc.on('error', (err) => { task.output += `\n[spawn error] ${err.message}`; task.exitCode = -1; });
+          BG_TASKS.set(id, task);
+          return { success: true, output: `Started background task ${id}: \`${input.command}\`\nUse check_task with id "${id}" to read output.` };
+        }
         try {
           const result = execSync(input.command, { cwd, encoding: 'utf8', timeout: 30000, stdio: ['pipe', 'pipe', 'pipe'] });
           return { success: true, output: result || '(no output)' };
@@ -499,6 +540,27 @@ export async function executeTool(name, input, { agentLabel = 'main', onNotify =
           const combined = [err.stdout, err.stderr].filter(Boolean).join('\n').trim();
           return { success: false, output: combined || err.message };
         }
+      }
+
+      case 'check_task': {
+        if (!input.id) {
+          if (!BG_TASKS.size) return { success: true, output: 'No background tasks.' };
+          const lines = [...BG_TASKS.values()].map(t => {
+            const status = t.exitCode === null ? 'running' : `exited (${t.exitCode})`;
+            const age = Math.round((Date.now() - t.startedAt) / 1000);
+            return `${t.id}  [${status}, ${age}s]  ${t.command.slice(0, 60)}`;
+          });
+          return { success: true, output: lines.join('\n') };
+        }
+        const task = BG_TASKS.get(input.id);
+        if (!task) return { success: false, output: `No such task: ${input.id}` };
+        if (input.kill && task.exitCode === null) {
+          try { task.proc.kill('SIGTERM'); } catch {}
+          return { success: true, output: `Sent SIGTERM to ${input.id}.` };
+        }
+        const status = task.exitCode === null ? 'running' : `exited with code ${task.exitCode}`;
+        if (task.exitCode !== null) BG_TASKS.delete(input.id); // final read cleans up
+        return { success: true, output: `${task.id} (${status})\n── output (last 20k chars) ──\n${task.output || '(no output yet)'}` };
       }
 
       case 'git_status': {

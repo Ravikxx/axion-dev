@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Box, Text, Static, useApp } from 'ink';
 import { execSync, spawn } from 'child_process';
-import { existsSync, readFileSync, unlinkSync } from 'fs';
+import { existsSync, readFileSync, unlinkSync, statSync } from 'fs';
 import { join, resolve } from 'path';
 import Spinner from 'ink-spinner';
 import { MessageRow } from './ChatPane.jsx';
@@ -22,7 +22,11 @@ import {
   appendLearnedInstructions, clearLearnedInstructions, getLearnedInstructions,
   getSchedules, saveSchedules, saveScheduleResult, getScheduleResults,
   getSavedTheme, saveTheme,
+  beginCheckpoint, listCheckpoints, rewindCheckpoints,
+  getCustomCommands,
+  getAllowedTools, allowTool, clearAllowedTools,
 } from '../persist.js';
+import { COMMANDS } from './Suggestions.jsx';
 import { THEMES, setTheme, themeName, accent } from './theme.js';
 import { parseSchedule, isDue, tickScheduler } from '../scheduler.js';
 import { connectOAuth, listOAuthTokens, revokeOAuthToken, getOAuthToken } from '../oauth/oauth.js';
@@ -61,8 +65,11 @@ const MAX_GOAL_ITERS = 25;
 const HELP_TEXT = `  Commands
   ──────────────────────────────────────────────────
   /help                         this screen
+  custom commands               .md files in ~/.axion/commands/ or ./.axion/commands/
+                                become /<filename> — $ARGUMENTS is replaced with args
   /model <name|id>              switch model (alias or raw ID)
   /mode  <name>                 switch mode: ask · plan · bypass  (Ctrl+P to cycle)
+  /permissions [clear]          list/reset always-allowed tools (press "a" on confirms)
   /theme [name]                 switch accent color (ember · violet · ocean · jade · rose · gold)
   /api   <model> <key>          set API key (saved)
   /endpoint <name> <url> [model] [key]  add a custom endpoint
@@ -111,6 +118,7 @@ const HELP_TEXT = `  Commands
   /copy-block <n>               copy the Nth code block from the last response
   /export <filename>            save chat as markdown file
   /undo                         restore last overwritten/deleted file
+  /rewind [list|<n>]            undo the last n turns' file changes (checkpoints)
   /save          <name>         save current chat
   /remove-chat   <name>         delete a saved chat
   /resume        <name>         resume a saved chat (no name = list all)
@@ -357,14 +365,22 @@ export function App({
     liveRef.current = [];
     setLiveMessages([]);
     if (live.length > 0) setStaticMessages((p) => [...p, ...live]);
-    // Warn once when context usage crosses 85%
+    // Auto-compact when context usage crosses 85%
     const pct = tokensRef.current.total / getContextWindow(model);
-    if (pct >= 0.85 && !compactWarnedRef.current) {
+    if (pct >= 0.85 && !compactWarnedRef.current && agentRef.current?.history?.length) {
       compactWarnedRef.current = true;
       setStaticMessages((p) => [...p, {
         type: 'info',
-        content: `⚠ Context ${Math.round(pct * 100)}% full — run /compact to summarize and free space.`,
+        content: `⚠ Context ${Math.round(pct * 100)}% full — auto-compacting…`,
       }]);
+      agentRef.current.compact()
+        .then(() => {
+          compactWarnedRef.current = false;
+          setStaticMessages((p) => [...p, { type: 'info', content: '✔ Auto-compacted — earlier conversation summarized, context freed.' }]);
+        })
+        .catch((err) => {
+          setStaticMessages((p) => [...p, { type: 'info', content: `Auto-compact failed (${err.message}) — run /compact manually.` }]);
+        });
     }
   }, [model]);
 
@@ -548,7 +564,11 @@ export function App({
       const askConfirm = (tc) => {
         // Never prompt for sequential thinking — it's internal reasoning, not an action
         if (tc.name && tc.name.includes('sequentialthinking')) return Promise.resolve(true);
+        // Skip the prompt for tools the user marked "always allow" in this project
+        const key = permissionKey(tc.name, tc.input);
+        if (getAllowedTools().includes(key)) return Promise.resolve(true);
         return new Promise((resolve) => {
+          pendingAllowKeyRef.current = key;
           setPendingConfirm({ name: tc.name, label: confirmLabel(tc.name, tc.input) });
           setInputMode('confirm-tool');
           confirmResolverRef.current = resolve;
@@ -651,6 +671,51 @@ export function App({
             pushStatic({ type: 'info', content: `model → ${arg} (saved)` });
           }
           return true;
+
+        case 'permissions': {
+          if (arg === 'clear') {
+            clearAllowedTools();
+            pushStatic({ type: 'info', content: 'Cleared all always-allow permissions for this project.' });
+            return true;
+          }
+          const allowed = getAllowedTools();
+          if (!allowed.length) {
+            pushStatic({ type: 'info', content: 'No always-allowed tools in this project. Press "a" on any tool confirm to add one.' });
+          } else {
+            pushStatic({ type: 'info', content: `  Always allowed in ${shortCwd()}\n  ──────────────────────────────\n${allowed.map(k => `  • ${k}`).join('\n')}\n\n  /permissions clear to reset` });
+          }
+          return true;
+        }
+
+        case 'rewind': {
+          if (!arg || arg === 'list') {
+            const cps = listCheckpoints();
+            if (!cps.length) {
+              pushStatic({ type: 'info', content: 'No checkpoints yet — one is created each time the agent edits files in a turn.' });
+            } else {
+              const lines = cps.map((c, i) =>
+                `  ${i + 1}. ${new Date(c.ts).toLocaleTimeString()}  ${c.fileCount} file${c.fileCount !== 1 ? 's' : ''}  "${c.label}"`
+              ).join('\n');
+              pushStatic({ type: 'info', content: `  Checkpoints (most recent first)\n  ──────────────────────────────\n${lines}\n\n  /rewind <n> restores the last n turns' file changes` });
+            }
+            return true;
+          }
+          const n = parseInt(arg, 10);
+          if (!Number.isInteger(n) || n < 1) {
+            pushStatic({ type: 'error', content: 'usage: /rewind [list|<n>]   e.g. /rewind 1' });
+            return true;
+          }
+          const { undone, restored, deleted } = rewindCheckpoints(n);
+          if (!undone) {
+            pushStatic({ type: 'info', content: 'Nothing to rewind.' });
+          } else {
+            const parts = [];
+            if (restored.length) parts.push(`restored: ${restored.map(p => p.replace(process.cwd() + '/', '')).join(', ')}`);
+            if (deleted.length)  parts.push(`deleted: ${deleted.map(p => p.replace(process.cwd() + '/', '')).join(', ')}`);
+            pushStatic({ type: 'info', content: `⏪ rewound ${undone} checkpoint${undone > 1 ? 's' : ''}${parts.length ? ' — ' + parts.join(' · ') : ' (no file changes)'}` });
+          }
+          return true;
+        }
 
         case 'theme': {
           if (!arg) {
@@ -2145,6 +2210,10 @@ export function App({
 
   // ── Submit ─────────────────────────────────────────────────────────────────
 
+  const messageQueueRef   = useRef([]);
+  const handleSubmitRef   = useRef(null);
+  const pendingAllowKeyRef = useRef(null);
+
   const handleSubmit = useCallback(
     async (input) => {
       // `!cmd` is shorthand for /run cmd (skip in oauth-paste mode — tokens are opaque)
@@ -2152,11 +2221,29 @@ export function App({
         input = `/run ${input.slice(1).trim()}`;
       }
 
+      // Custom slash commands (~/.axion/commands/*.md) expand into prompts.
+      // Built-ins always win over a custom command of the same name.
+      if (input.startsWith('/')) {
+        const [cName, ...cRest] = input.slice(1).trim().split(/\s+/);
+        const lower = (cName || '').toLowerCase();
+        if (lower && !COMMANDS.some(c => c.cmd === lower)) {
+          const tpl = getCustomCommands()[lower];
+          if (tpl) {
+            const cArg = cRest.join(' ');
+            input = tpl.includes('$ARGUMENTS')
+              ? tpl.replaceAll('$ARGUMENTS', cArg)
+              : (cArg ? `${tpl}\n\n${cArg}` : tpl);
+          }
+        }
+      }
+
       if (thinking) {
         if (input.startsWith('/')) {
           handleSlashCommand(input);
         } else {
-          pushStatic({ type: 'info', content: `Axion is still ${thinkingWord}… try /btw for a quick side question.` });
+          // Queue the message; it's sent automatically when this turn finishes
+          messageQueueRef.current.push(input);
+          pushStatic({ type: 'info', content: `⏳ queued (${messageQueueRef.current.length} waiting) — sends when the current turn finishes` });
         }
         return;
       }
@@ -2177,7 +2264,31 @@ export function App({
 
       if (watchActive) watchBufferRef.current.push(input);
 
+      // @file mentions — pin referenced files into context (this turn + later)
+      const mentioned = [];
+      for (const m of input.matchAll(/(?:^|\s)@([^\s@]+)/g)) {
+        const path = m[1].replace(/[.,;:!?]+$/, ''); // strip trailing punctuation
+        try {
+          const abs = resolve(process.cwd(), path);
+          if (existsSync(abs) && statSync(abs).isFile() && !includedFiles.some(f => f.path === path)) {
+            mentioned.push({ path, content: readFileSync(abs, 'utf8') });
+          }
+        } catch {}
+      }
+      if (mentioned.length) {
+        const nextFiles = [...includedFiles, ...mentioned];
+        setIncludedFiles(nextFiles);
+        // Apply synchronously so the files are in context for THIS message
+        // (the includedFiles useEffect won't flush until after this turn starts)
+        const pinned = nextFiles.map(f =>
+          `<pinned-file path="${f.path}">\n${f.content}\n</pinned-file>`
+        ).join('\n\n');
+        agentRef.current?.setSystemOverride([systemOverride, pinned].filter(Boolean).join('\n\n'));
+        pushStatic({ type: 'info', content: `📎 pinned ${mentioned.map(f => f.path).join(', ')}` });
+      }
+
       lastUserMsgRef.current = input;
+      beginCheckpoint(input);
       pushStatic({ type: 'user', content: input });
       liveRef.current = []; setLiveMessages([]);
       setThinking(true);
@@ -2199,17 +2310,32 @@ export function App({
         setPendingConfirm(null);
         confirmResolverRef.current = null;
         finalizeTurn();
+        // Drain queued messages one at a time
+        if (messageQueueRef.current.length) {
+          const next = messageQueueRef.current.shift();
+          setTimeout(() => handleSubmitRef.current?.(next), 50);
+        }
       }
     },
-    [thinking, thinkingWord, inputMode, handleSlashCommand, addLive, pushStatic, finalizeTurn, runAgent, watchActive]
+    [thinking, thinkingWord, inputMode, handleSlashCommand, addLive, pushStatic, finalizeTurn, runAgent, watchActive, includedFiles, systemOverride]
   );
 
+  useEffect(() => { handleSubmitRef.current = handleSubmit; }, [handleSubmit]);
+
   const handleConfirmAnswer = useCallback((answer) => {
+    if (answer === 'always') {
+      if (pendingAllowKeyRef.current) {
+        allowTool(pendingAllowKeyRef.current);
+        addLive({ type: 'info', content: `✓ always allowing ${pendingAllowKeyRef.current} in this project (saved — /permissions to manage)` });
+      }
+      answer = true;
+    }
+    pendingAllowKeyRef.current = null;
     confirmResolverRef.current?.(answer);
     confirmResolverRef.current = null;
     setInputMode('chat');
     setPendingConfirm(null);
-  }, []);
+  }, [addLive]);
 
   const handleInterrupt = useCallback(() => {
     if (!agentRef.current || agentRef.current.cancelled) return;
@@ -2304,7 +2430,7 @@ export function App({
           <Text color="white">run</Text>
           <Text color="cyan" bold>{pendingConfirm.name}</Text>
           {pendingConfirm.label ? <Text color="gray">{pendingConfirm.label}</Text> : null}
-          <Text color="gray">(y/n)</Text>
+          <Text color="gray">(y/n/a — a = always allow)</Text>
           <YesNoPrompt onAnswer={handleConfirmAnswer} />
         </Box>
       )}
@@ -2332,7 +2458,7 @@ export function App({
       <InputBox
         onSubmit={handleSubmit}
         disabled={inputMode !== 'chat' && inputMode !== 'oauth-paste'}
-        placeholder={inputMode === 'oauth-paste' ? 'Paste your token here and press Enter…' : goal ? `goal active (iter ${goalIteration}) — send message or /goal to cancel` : 'ask Axion something…  or type / for commands'}
+        placeholder={inputMode === 'oauth-paste' ? 'Paste your token here and press Enter…' : goal ? `goal active (iter ${goalIteration}) — send message or /goal to cancel` : thinking ? 'type to queue the next message…' : 'ask Axion something…  or type / for commands'}
         onChange={setInputValue}
         tabCompletion={tabComplete}
         onToggleExpand={() => setDiffsExpanded(v => !v)}
@@ -2343,6 +2469,16 @@ export function App({
       />
     </Box>
   );
+}
+
+// Key for the always-allow list: shell commands are scoped to their binary
+// (e.g. run_command:npm), everything else to the tool name.
+function permissionKey(name, input) {
+  if (name === 'run_command') {
+    const bin = (input?.command || '').trim().split(/\s+/)[0];
+    return bin ? `run_command:${bin}` : 'run_command';
+  }
+  return name;
 }
 
 function confirmLabel(name, input) {
