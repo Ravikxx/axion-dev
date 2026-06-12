@@ -280,12 +280,26 @@ export function App({
   const [liveMessages, setLiveMessages]   = useState([]);
   const [thinking, setThinking]           = useState(false);
   const [thinkingWord, setThinkingWord]   = useState('baking');
+  const [thinkingElapsed, setThinkingElapsed] = useState(0);
+  const thinkingStartRef = useRef(null);
   const [inputMode, setInputMode]         = useState('chat');
   const [pendingConfirm, setPendingConfirm] = useState(null);
   const [inputValue, setInputValue]       = useState('');
   const [tokens, setTokens]               = useState({ total: 0, input: 0, output: 0 });
   const [diffsExpanded, setDiffsExpanded] = useState(false);
   const [thinkingExpanded, setThinkingExpanded] = useState(true);
+
+  // Thinking timer
+  useEffect(() => {
+    if (thinking) {
+      thinkingStartRef.current = Date.now();
+      setThinkingElapsed(0);
+      const id = setInterval(() => {
+        setThinkingElapsed(Math.floor((Date.now() - thinkingStartRef.current) / 1000));
+      }, 1000);
+      return () => clearInterval(id);
+    }
+  }, [thinking]);
 
   // Extended thinking config
   const [extThinking, setExtThinking]     = useState(initialThinking);
@@ -2256,6 +2270,7 @@ export function App({
         <Box marginX={2} gap={1}>
           <Text color="greenBright"><Spinner type="dots" /></Text>
           <Text color="greenBright">{thinkingWord}…</Text>
+          <Text color="gray" dimColor>{String(Math.floor(thinkingElapsed / 60)).padStart(2, '0')}:{String(thinkingElapsed % 60).padStart(2, '0')}</Text>
           <Text color="gray" dimColor>esc to interrupt</Text>
         </Box>
       )}
