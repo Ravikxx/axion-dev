@@ -267,7 +267,13 @@ export class Agent {
     for (const skill of getSkills()) {
       const key = skill.name.toLowerCase();
       if (this.activeSkills.has(key)) continue;
-      if (skill.triggers.some(t => t && lower.includes(t.toLowerCase()))) {
+      // Whole-word match so short triggers (e.g. "mc") don't fire inside other words
+      const matches = (t) => {
+        if (!t) return false;
+        const esc = t.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return new RegExp(`(^|[^a-z0-9])${esc}([^a-z0-9]|$)`).test(lower);
+      };
+      if (skill.triggers.some(matches)) {
         this.activeSkills.set(key, skill);
         this.onSkillActivated?.(skill.name);
       }
