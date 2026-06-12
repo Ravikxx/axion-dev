@@ -171,6 +171,27 @@
 
   <div class="announcement">
     <div class="ann-meta">
+      <span class="ann-tag notice">Notice</span>
+      <span class="ann-date">June 12, 2026</span>
+    </div>
+    <h2>Lumen 1.2.1 Coming Soon — Fixing Catastrophic Forgetting</h2>
+    <p>
+      Post-release evaluation revealed that Lumen 1.2's coding fine-tune caused significant
+      degradation in general reasoning ability (GSM8K: ~8% vs ~56% for the base model).
+      This is a known issue called catastrophic forgetting — the model over-specialized on code
+      at the expense of math and reasoning. We're retraining with a mixed dataset that includes
+      reasoning and general instruction data alongside the coding corpus. Lumen 1.2.1 will
+      address this. Lumen 1.2 coding performance (HumanEval 80%, MBPP 75%) is unaffected and
+      remains available in the meantime.
+    </p>
+    <div class="ann-footer">
+      <a class="ann-link" href="/lumen-12">Lumen 1.2 benchmarks →</a>
+    </div>
+  </div>
+
+
+  <div class="announcement">
+    <div class="ann-meta">
       <span class="ann-tag release">Release</span>
       <span class="ann-date">June 12, 2026</span>
     </div>
