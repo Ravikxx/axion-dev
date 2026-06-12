@@ -69,6 +69,10 @@ export function createClient(modelAlias) {
     return { type: 'veil', client: new OpenAI({ apiKey: 'no-key', baseURL: BASE_URLS.veil }) };
   }
 
+  if (provider === 'lumen') {
+    return { type: 'openai', client: new OpenAI({ apiKey: 'no-key', baseURL: BASE_URLS.lumen }) };
+  }
+
   if (provider === 'openrouter') {
     const key = API_KEYS.openrouter;
     if (!key) throw new Error('OPENROUTER_API_KEY not set — use /api openrouter <key>');

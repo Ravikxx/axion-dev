@@ -98,6 +98,7 @@ Or set them live inside the CLI:
 
 | Alias | Provider | Notes |
 |---|---|---|
+| `lumen` | Axion Labs | No key required — Axion Labs' own 8B model, fine-tuned by RavikxxBGamin |
 | `veil` | Axion Labs | No key required — free but slow (up to 100s), not broken |
 | `openrouter` / `or` | OpenRouter | 200+ models via one key |
 | `fable` | Anthropic | claude-fable-5 |

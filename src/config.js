@@ -30,6 +30,7 @@ export const MODELS = {
   'or':               'meta-llama/llama-3.3-70b-instruct',
   ollama:             'llama3',
   veil:               'veil',
+  lumen:              'lumen',
 };
 
 export const MODEL_PROVIDERS = {
@@ -53,6 +54,7 @@ export const MODEL_PROVIDERS = {
   'or':               'openrouter',
   ollama:             'ollama',
   veil:               'veil',
+  lumen:              'lumen',
 };
 
 export const API_KEYS = {
@@ -73,6 +75,7 @@ export const BASE_URLS = {
   openrouter:  'https://openrouter.ai/api/v1',
   ollama:      'http://localhost:11434/v1',
   veil:        'https://ravikxxbgamin-minecraftai-chat.hf.space/v1',
+  lumen:       'https://ravikxxbgamin-lumen.hf.space/v1',
 };
 
 // Named custom endpoints — mutated at runtime via /endpoint command.

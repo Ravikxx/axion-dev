@@ -247,6 +247,12 @@ function WelcomeBanner({ model, mode }) {
               <Text color="gray">  /goal to run until a condition is met</Text>
             </>
           )}
+          <Box marginTop={1} flexDirection="column">
+            <Text color="#cc785c" bold>  ◈ News</Text>
+            <Text color="gray">  <Text color="greenBright" bold>NEW</Text> Lumen is live — Axion Labs' own 8B model</Text>
+            <Text color="gray" dimColor>      fine-tuned by RavikxxBGamin · free · no key needed</Text>
+            <Text color="gray">      <Text color="white">/model lumen</Text> to try it</Text>
+          </Box>
         </Box>
       </Box>
     </Box>
