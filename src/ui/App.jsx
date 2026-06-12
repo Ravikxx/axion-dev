@@ -72,7 +72,7 @@ const HELP_TEXT = `  Commands
   /mode  <name>                 switch mode: ask · plan · bypass  (Ctrl+P to cycle)
   /permissions [clear]          list/reset always-allowed tools (press "a" on confirms)
   /skills                       list skills — .md files that auto-inject when triggered
-  /skills delete <name>         remove a skill
+  /skill-delete <name>          remove a skill (alias: /skills delete <name>)
   /skill-generator <name> <txt> AI-generates a skill file in ~/.axion/skills/
                                 e.g. /skill-generator minecraft remember X whenever minecraft comes up
   /theme [name]                 switch accent color (ember · violet · ocean · jade · rose · gold)
@@ -680,10 +680,20 @@ export function App({
           }
           return true;
 
+        case 'skill-delete': {
+          if (!arg) { pushStatic({ type: 'error', content: 'usage: /skill-delete <name>' }); return true; }
+          agentRef.current?.activeSkills?.delete(arg.toLowerCase());
+          pushStatic(deleteSkill(arg)
+            ? { type: 'info', content: `Deleted skill "${arg}".` }
+            : { type: 'error', content: `No skill named "${arg}". /skills to list.` });
+          return true;
+        }
+
         case 'skills': {
           if (args[0] === 'delete' || args[0] === 'remove') {
             const target = args.slice(1).join(' ');
             if (!target) { pushStatic({ type: 'error', content: 'usage: /skills delete <name>' }); return true; }
+            agentRef.current?.activeSkills?.delete(target.toLowerCase());
             pushStatic(deleteSkill(target)
               ? { type: 'info', content: `Deleted skill "${target}".` }
               : { type: 'error', content: `No skill named "${target}".` });
