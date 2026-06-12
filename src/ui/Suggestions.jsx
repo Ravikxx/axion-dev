@@ -5,6 +5,7 @@ export const COMMANDS = [
   { cmd: 'help',            desc: 'show all commands' },
   { cmd: 'model',           desc: '<name|id>  switch model' },
   { cmd: 'mode',            desc: '<name>  ask · plan · bypass' },
+  { cmd: 'theme',           desc: '[name]  switch accent color (no args = list)' },
   { cmd: 'api',             desc: '<model> <key>  set API key' },
   { cmd: 'endpoint',        desc: '<name> <url> [model] [key]  add/list custom endpoints' },
   { cmd: 'thinking',        desc: '[on|off|<tokens>]  toggle extended thinking' },

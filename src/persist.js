@@ -56,6 +56,13 @@ export function saveCustomEndpoints(map) {
   save(_cfg);
 }
 
+export function getSavedTheme() { return _cfg.theme || null; }
+
+export function saveTheme(name) {
+  _cfg.theme = name;
+  save(_cfg);
+}
+
 export function getAdviserModel() { return _cfg.adviserModel || null; }
 
 export function saveAdviserModel(model) {

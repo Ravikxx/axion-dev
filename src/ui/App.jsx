@@ -21,7 +21,9 @@ import {
   saveMacro, loadMacro, listMacros, deleteMacro,
   appendLearnedInstructions, clearLearnedInstructions, getLearnedInstructions,
   getSchedules, saveSchedules, saveScheduleResult, getScheduleResults,
+  getSavedTheme, saveTheme,
 } from '../persist.js';
+import { THEMES, setTheme, themeName, accent } from './theme.js';
 import { parseSchedule, isDue, tickScheduler } from '../scheduler.js';
 import { connectOAuth, listOAuthTokens, revokeOAuthToken, getOAuthToken } from '../oauth/oauth.js';
 import { OAUTH_PROVIDERS } from '../oauth/providers.js';
@@ -50,6 +52,9 @@ const THINKING_WORDS = [
 ];
 
 const MODE_COLORS = { ask: 'cyan', plan: 'yellow', auto: 'greenBright', bypass: 'greenBright' };
+
+// Restore saved accent theme before first render
+setTheme(getSavedTheme() || 'ember');
 const CYCLE_MODES = ['ask', 'plan', 'auto']; // internal values; auto displays as 'bypass'
 const MAX_GOAL_ITERS = 25;
 
@@ -58,6 +63,7 @@ const HELP_TEXT = `  Commands
   /help                         this screen
   /model <name|id>              switch model (alias or raw ID)
   /mode  <name>                 switch mode: ask · plan · bypass  (Ctrl+P to cycle)
+  /theme [name]                 switch accent color (ember · violet · ocean · jade · rose · gold)
   /api   <model> <key>          set API key (saved)
   /endpoint <name> <url> [model] [key]  add a custom endpoint
   /endpoint                             list saved endpoints
@@ -203,17 +209,17 @@ function WelcomeBanner({ model, mode }) {
   const modeColor  = MODE_COLORS[mode] || 'cyan';
   const isFirstRun = model === 'veil' && !getMemories().length;
   return (
-    <Box flexDirection="column" marginBottom={1} borderStyle="round" borderColor="#cc785c" paddingX={2} paddingY={0}>
+    <Box flexDirection="column" marginBottom={1} borderStyle="round" borderColor={accent()} paddingX={2} paddingY={0}>
       <Box gap={4}>
         {/* Left column */}
         <Box flexDirection="column" minWidth={28}>
           <Box gap={1} marginBottom={0}>
-            <Text color="#cc785c" bold>✻ Axion</Text>
+            <Text color={accent()} bold>✻ Axion</Text>
             <Text color="gray" dimColor>by Axion Labs</Text>
           </Box>
           <Box gap={1} marginLeft={2}>
             <Text color="gray" dimColor>model </Text>
-            <Text color="#cc785c">{model}</Text>
+            <Text color={accent()}>{model}</Text>
           </Box>
           <Box gap={1} marginLeft={2}>
             <Text color="gray" dimColor>mode  </Text>
@@ -248,7 +254,7 @@ function WelcomeBanner({ model, mode }) {
             </>
           )}
           <Box marginTop={1} flexDirection="column">
-            <Text color="#cc785c" bold>  ◈ News</Text>
+            <Text color={accent()} bold>  ◈ News</Text>
             <Text color="gray">  <Text color="greenBright" bold>NEW</Text> Lumen is live — Axion Labs' own 8B model</Text>
             <Text color="gray" dimColor>      fine-tuned by RavikxxBGamin · free · no key needed</Text>
             <Text color="gray">      <Text color="white">/model lumen</Text> to try it</Text>
@@ -645,6 +651,22 @@ export function App({
             pushStatic({ type: 'info', content: `model → ${arg} (saved)` });
           }
           return true;
+
+        case 'theme': {
+          if (!arg) {
+            const list = Object.entries(THEMES)
+              .map(([name, t]) => `  ${name === themeName() ? '●' : ' '} ${name.padEnd(8)} ${t.desc}`)
+              .join('\n');
+            pushStatic({ type: 'info', content: `  Themes (current: ${themeName()})\n  ──────────────────────────────\n${list}\n\n  /theme <name> to switch` });
+          } else if (setTheme(arg)) {
+            saveTheme(arg);
+            pushStatic({ type: 'info', content: `theme → ${arg} (saved)` });
+            pushStatic({ type: '_banner', model, mode });
+          } else {
+            pushStatic({ type: 'error', content: `unknown theme "${arg}" — available: ${Object.keys(THEMES).join(' · ')}` });
+          }
+          return true;
+        }
 
         case 'mode': {
           // 'bypass' is the user-facing alias for 'auto'
@@ -2253,7 +2275,7 @@ export function App({
       <Box marginX={1} marginTop={1} justifyContent="space-between">
         <Text>
           <Text color="gray" dimColor>── </Text>
-          <Text color="blueBright" bold>Axion</Text>
+          <Text color={accent()} bold>Axion</Text>
           <Text color="gray" dimColor>  {CWD}  </Text>
           <Text color="cyan">{model}</Text>
           <Text color="gray" dimColor>  </Text>

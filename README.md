@@ -157,6 +157,7 @@ Switch with `/mode auto` or press `Ctrl+P` to cycle.
 /help                         show all commands
 /model <name>                 switch model
 /mode <name>                  switch mode: ask · plan · auto
+/theme [name]                 accent color: ember · violet · ocean · jade · rose · gold
 /api <model> <key>            set API key
 /endpoint <name> <url> [model] [key]   add custom endpoint
 /thinking [on|off|tokens]     enable extended thinking
