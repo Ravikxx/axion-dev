@@ -26,6 +26,7 @@ import {
   getCustomCommands,
   getAllowedTools, allowTool, clearAllowedTools,
   getSkills, saveSkill, deleteSkill,
+  getDiscordToken, saveDiscordToken,
 } from '../persist.js';
 import { COMMANDS } from './Suggestions.jsx';
 import { THEMES, setTheme, themeName, accent } from './theme.js';
@@ -34,6 +35,7 @@ import { connectOAuth, listOAuthTokens, revokeOAuthToken, getOAuthToken } from '
 import { OAUTH_PROVIDERS } from '../oauth/providers.js';
 import { captureScreen, MACRO_STATE, showOverlay, hideOverlay } from '../agent/computer.js';
 import { MCP, getMcpConfig, saveMcpConfig } from '../agent/mcp.js';
+import { startDiscord, stopDiscord, sendDM, DISCORD_STATE } from '../agent/discord.js';
 import { MCP_MARKETPLACE, CATEGORIES, searchMarketplace, getMarketplaceEntry } from '../agent/mcp-marketplace.js';
 import { analyzeScreen } from '../agent/vision.js';
 import { generateImage } from '../agent/image.js';
@@ -145,6 +147,10 @@ const HELP_TEXT = `  Commands
   /mcp reload                   restart all servers
   /web   [port]                 open web UI in browser (default port 3000)
   /web   stop                   stop the running web server
+  /discord token <TOKEN>        save Discord bot token
+  /discord start                connect bot — DMs appear here, auto-replied by active model
+  /discord stop                 disconnect bot
+                                run axion-discord for a standalone bot (no CLI needed)
   /oauth connect <service>      connect GitHub · Google · Notion · Slack
   /oauth list                   show connected services
   /oauth revoke <service>       disconnect a service
@@ -2034,6 +2040,67 @@ triggers: <comma-separated words that should activate it, include "${skillName.t
           }
 
           pushStatic({ type: 'info', content: `MCP commands:\n  /mcp                      show server status\n  /mcp browse               browse marketplace\n  /mcp search <query>       search marketplace\n  /mcp install <id>         install from marketplace\n  /mcp add <n> <cmd> [args] connect a custom server (saved)\n  /mcp enable <name>        enable a disabled server\n  /mcp disable <name>       pause a server (keeps config)\n  /mcp remove <name>        disconnect + delete config\n  /mcp tools [name]         list available tools\n  /mcp reload               restart all servers\n\nExample:\n  /mcp install github\n  /mcp disable github\n  /mcp enable github` });
+          return true;
+        }
+
+        case 'discord': {
+          const [sub, ...dRest] = args;
+
+          // /discord token <TOKEN>
+          if (sub === 'token') {
+            const token = dRest[0];
+            if (!token) { pushStatic({ type: 'error', content: 'usage: /discord token <BOT_TOKEN>' }); return true; }
+            saveDiscordToken(token);
+            pushStatic({ type: 'info', content: '✔ Discord bot token saved. Run /discord start to connect.' });
+            return true;
+          }
+
+          // /discord start
+          if (sub === 'start') {
+            const token = getDiscordToken();
+            if (!token) { pushStatic({ type: 'error', content: 'No token saved. Run /discord token <BOT_TOKEN> first.' }); return true; }
+            if (DISCORD_STATE.running) { pushStatic({ type: 'info', content: `Discord bot already running as ${DISCORD_STATE.username}.` }); return true; }
+            pushStatic({ type: 'info', content: 'Connecting Discord bot…' });
+            try {
+              await startDiscord(token, async (msg) => {
+                const username = msg.author.tag;
+                const content  = msg.content;
+                pushStatic({ type: 'info', content: `[Discord DM] ${username}: ${content}` });
+                try {
+                  const reply = await agentRef.current.askBtw(content);
+                  await sendDM(msg, reply);
+                  pushStatic({ type: 'info', content: `[Discord DM → ${username}]: ${reply}` });
+                } catch (err) {
+                  pushStatic({ type: 'error', content: `Discord reply failed: ${err.message}` });
+                }
+              });
+              pushStatic({ type: 'info', content: `✔ Discord bot connected as ${DISCORD_STATE.username}. DMs will appear here and be answered by the active model.` });
+            } catch (err) {
+              pushStatic({ type: 'error', content: `Failed to connect: ${err.message}` });
+            }
+            return true;
+          }
+
+          // /discord stop
+          if (sub === 'stop') {
+            if (!DISCORD_STATE.running) { pushStatic({ type: 'info', content: 'Discord bot is not running.' }); return true; }
+            await stopDiscord();
+            pushStatic({ type: 'info', content: '◈ Discord bot disconnected.' });
+            return true;
+          }
+
+          // /discord status or bare /discord
+          if (!sub || sub === 'status') {
+            if (DISCORD_STATE.running) {
+              pushStatic({ type: 'info', content: `Discord bot running as ${DISCORD_STATE.username}` });
+            } else {
+              const hasToken = !!getDiscordToken();
+              pushStatic({ type: 'info', content: `Discord bot not running. ${hasToken ? 'Run /discord start to connect.' : 'Run /discord token <BOT_TOKEN> first.'}` });
+            }
+            return true;
+          }
+
+          pushStatic({ type: 'info', content: `Discord commands:\n  /discord token <TOKEN>   save your bot token\n  /discord start           connect and listen for DMs\n  /discord stop            disconnect\n  /discord status          show connection status` });
           return true;
         }
 

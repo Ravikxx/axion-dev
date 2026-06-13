@@ -48,6 +48,7 @@ export const COMMANDS = [
   { cmd: 'remove-chat',     desc: '<name>  delete a saved chat' },
   { cmd: 'compact',         desc: 'summarize & compress history' },
   { cmd: 'btw',             desc: '<question>  quick side question' },
+  { cmd: 'discord',         desc: 'token|start|stop|status  Discord bot — DMs appear in CLI' },
   { cmd: 'oauth',           desc: 'connect|list|revoke  GitHub · Google · Notion · Slack' },
   { cmd: 'schedule',        desc: 'list|add|run|remove|enable|disable|results  scheduled tasks' },
   { cmd: 'web',             desc: '[port|stop]  open/stop web UI in browser' },

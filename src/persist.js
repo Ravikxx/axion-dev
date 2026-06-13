@@ -91,6 +91,13 @@ export function saveImageModel(alias) {
   save(_cfg);
 }
 
+export function getDiscordToken() { return _cfg.discordToken || null; }
+
+export function saveDiscordToken(token) {
+  _cfg.discordToken = token;
+  save(_cfg);
+}
+
 // ── Persistent memory ────────────────────────────────────────────────────────
 
 const MEMORY_FILE = join(DIR, 'memory.json');
