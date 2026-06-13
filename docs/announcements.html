@@ -171,6 +171,26 @@
 
   <div class="announcement">
     <div class="ann-meta">
+      <span class="ann-tag release">Release</span>
+      <span class="ann-date">June 13, 2026</span>
+    </div>
+    <h2>Lumen 1.2.1 — Catastrophic Forgetting Fixed</h2>
+    <p>
+      Lumen 1.2.1 is now live. Shortly after releasing Lumen 1.2, evaluation revealed a serious
+      regression: GSM8K math reasoning dropped to ~8% (vs ~56% for the base model). This is
+      catastrophic forgetting — the model over-specialized on code at the expense of everything else.
+      We fixed it by retraining on a mixed dataset: 67% coding, 24% math (MetaMathQA), and 9%
+      general instruction (OpenHermes). Coding performance is maintained and general reasoning
+      is restored. The updated model is live now in the Axion Space.
+    </p>
+    <div class="ann-footer">
+      <a class="ann-link" href="https://huggingface.co/spaces/RavikxxBGamin/Lumen">Try Lumen →</a>
+      <a class="ann-link" href="/lumen-12">Benchmarks →</a>
+    </div>
+  </div>
+
+  <div class="announcement">
+    <div class="ann-meta">
       <span class="ann-tag notice">Notice</span>
       <span class="ann-date">June 12, 2026</span>
     </div>
