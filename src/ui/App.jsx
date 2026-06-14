@@ -363,8 +363,9 @@ export function App({
   const confirmResolverRef = useRef(null);
   const oauthPasteRef      = useRef(null);
   const lastUserMsgRef     = useRef('');
-  const activeDiscordMsgRef = useRef(null); // Discord msg to reply to after this turn
-  const discordOriginRef    = useRef(false); // true when current turn was triggered by a Discord DM
+  const activeDiscordMsgRef      = useRef(null);  // Discord msg to reply to after this turn
+  const discordOriginRef         = useRef(false);  // true when current turn was triggered by a Discord DM
+  const discordAwaitingConfirmRef = useRef(false); // true when agent is paused waiting for Discord y/n
   // Queue for Discord DMs — drained inside React's render cycle to avoid
   // calling setState from a Node EventEmitter callback (unreliable with Ink)
   const discordQueueRef     = useRef([]);
@@ -591,6 +592,13 @@ export function App({
           setPendingConfirm({ name: tc.name, label: confirmLabel(tc.name, tc.input) });
           setInputMode('confirm-tool');
           confirmResolverRef.current = resolve;
+          // If this turn came from Discord, also ask there
+          if (activeDiscordMsgRef.current) {
+            const label = confirmLabel(tc.name, tc.input);
+            const text = `🔧 **Permission needed**\n\`${tc.name}\`${label ? `\n${label}` : ''}\n\nReply \`y\` to allow or \`n\` to deny.`;
+            sendDM(activeDiscordMsgRef.current, text).catch(() => {});
+            discordAwaitingConfirmRef.current = true;
+          }
         });
       };
       const askPlanConfirm = () =>
@@ -2071,7 +2079,6 @@ triggers: <comma-separated words that should activate it, include "${skillName.t
                 const username = msg.author.tag;
                 const content  = msg.content?.trim();
                 if (!content) return;
-                // Push to queue — drained safely inside React's render cycle
                 discordQueueRef.current.push({ msg, username, content });
               });
               pushStatic({ type: 'info', content: `✔ Discord bot connected as ${DISCORD_STATE.username}. DMs will appear here and be answered by the active model.` });
@@ -2493,9 +2500,32 @@ triggers: <comma-separated words that should activate it, include "${skillName.t
   // Drain Discord DM queue inside React's render cycle (safe for Ink)
   useEffect(() => {
     const id = setInterval(() => {
+      if (discordQueueRef.current.length === 0) return;
       const item = discordQueueRef.current.shift();
       if (!item) return;
       const { msg, username, content } = item;
+
+      // If the agent is paused waiting for a y/n confirmation from Discord
+      if (discordAwaitingConfirmRef.current) {
+        const ans = content.trim().toLowerCase();
+        const isYes = ans === 'y' || ans === 'yes';
+        const isNo  = ans === 'n' || ans === 'no';
+        if (isYes || isNo) {
+          discordAwaitingConfirmRef.current = false;
+          pendingAllowKeyRef.current = null;
+          confirmResolverRef.current?.(isYes);
+          confirmResolverRef.current = null;
+          setInputMode('chat');
+          setPendingConfirm(null);
+          sendDM(msg, isYes ? '✅ Allowed.' : '❌ Denied.').catch(() => {});
+          return;
+        }
+        // Not a y/n — re-queue and wait
+        discordQueueRef.current.unshift(item);
+        return;
+      }
+
+      // Normal message — route through the full agent
       activeDiscordMsgRef.current = msg;
       discordOriginRef.current    = true;
       pushStatic({ type: 'user', content: `[Discord: ${username}]\n${content}` });
