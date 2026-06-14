@@ -49,7 +49,7 @@ export async function startDiscord(token, onMessage) {
       GatewayIntentBits.DirectMessageTyping,
       GatewayIntentBits.MessageContent,
     ],
-    partials: [Partials.Channel, Partials.Message],
+    partials: [Partials.Channel, Partials.Message, Partials.User],
   });
 
   await new Promise((resolve, reject) => {
@@ -71,7 +71,7 @@ export async function startDiscord(token, onMessage) {
   });
 
   client.on(Events.MessageUpdate, async (oldMsg, newMsg) => {
-    if (newMsg.partial) { try { await newMsg.fetch(); } catch { return; } }
+    if (newMsg.partial) { try { newMsg = await newMsg.fetch(); } catch { return; } }
     if (newMsg.author?.bot || newMsg.guild || !_onMessage) return;
     if (!newMsg.content || newMsg.content === oldMsg.content) return;
     await _onMessage(newMsg, { isEdit: true, originalMsgId: oldMsg.id });
