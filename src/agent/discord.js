@@ -64,5 +64,20 @@ export async function stopDiscord() {
 export async function sendDM(channelOrMsg, text) {
   if (!client) throw new Error('Discord bot not running');
   const channel = channelOrMsg.channel ?? channelOrMsg;
-  await channel.send(text);
+  const LIMIT = 1900; // stay under 2000 with a margin
+  if (text.length <= LIMIT) {
+    await channel.send(text);
+    return;
+  }
+  // Split on newlines where possible to avoid cutting mid-word or mid-codeblock
+  const chunks = [];
+  let remaining = text;
+  while (remaining.length > LIMIT) {
+    let cut = remaining.lastIndexOf('\n', LIMIT);
+    if (cut < LIMIT / 2) cut = LIMIT; // no good newline, hard cut
+    chunks.push(remaining.slice(0, cut));
+    remaining = remaining.slice(cut).trimStart();
+  }
+  if (remaining) chunks.push(remaining);
+  for (const chunk of chunks) await channel.send(chunk);
 }
