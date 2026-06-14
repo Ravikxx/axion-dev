@@ -5,6 +5,18 @@ let _onMessage = null;
 
 export const DISCORD_STATE = { running: false, username: null };
 
+// Per-user rate limit: ignore messages within 2s of the last one
+const _lastMsg = new Map();
+const RATE_MS = 2000;
+
+function isRateLimited(userId) {
+  const now = Date.now();
+  const last = _lastMsg.get(userId) || 0;
+  if (now - last < RATE_MS) return true;
+  _lastMsg.set(userId, now);
+  return false;
+}
+
 export async function startDiscord(token, onMessage) {
   if (client) await stopDiscord();
 
@@ -32,10 +44,10 @@ export async function startDiscord(token, onMessage) {
   });
 
   client.on(Events.MessageCreate, async (msg) => {
-    // Only respond to DMs, not bot messages
     if (msg.author.bot) return;
     if (msg.guild) return;
     if (!_onMessage) return;
+    if (isRateLimited(msg.author.id)) return;
     await _onMessage(msg);
   });
 }
