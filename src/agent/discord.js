@@ -44,6 +44,8 @@ export async function startDiscord(token, onMessage) {
   client = new Client({
     intents: [
       GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.GuildMessageReactions,
       GatewayIntentBits.DirectMessages,
       GatewayIntentBits.DirectMessageReactions,
       GatewayIntentBits.DirectMessageTyping,
@@ -64,8 +66,11 @@ export async function startDiscord(token, onMessage) {
 
   client.on(Events.MessageCreate, async (msg) => {
     if (msg.author.bot) return;
-    if (msg.guild) return;
     if (!_onMessage) return;
+    if (msg.guild) {
+      // In servers: only respond when directly mentioned
+      if (!msg.mentions.has(client.user)) return;
+    }
     if (isRateLimited(msg.author.id)) return;
     await _onMessage(msg);
   });
