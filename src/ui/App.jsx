@@ -365,6 +365,9 @@ export function App({
   const lastUserMsgRef     = useRef('');
   const activeDiscordMsgRef = useRef(null); // Discord msg to reply to after this turn
   const discordOriginRef    = useRef(false); // true when current turn was triggered by a Discord DM
+  // Queue for Discord DMs — drained inside React's render cycle to avoid
+  // calling setState from a Node EventEmitter callback (unreliable with Ink)
+  const discordQueueRef     = useRef([]);
 
   const liveRef    = useRef([]);
   const addLive    = useCallback((msg) => {
@@ -2064,17 +2067,12 @@ triggers: <comma-separated words that should activate it, include "${skillName.t
             if (DISCORD_STATE.running) { pushStatic({ type: 'info', content: `Discord bot already running as ${DISCORD_STATE.username}.` }); return true; }
             pushStatic({ type: 'info', content: 'Connecting Discord bot…' });
             try {
-              await startDiscord(token, async (msg) => {
+              await startDiscord(token, (msg) => {
                 const username = msg.author.tag;
                 const content  = msg.content?.trim();
                 if (!content) return;
-                // Store so handleSubmit knows to forward the response to Discord
-                activeDiscordMsgRef.current = msg;
-                discordOriginRef.current    = true;
-                // Show as a labeled user message in the CLI
-                pushStatic({ type: 'user', content: `[Discord: ${username}]\n${content}` });
-                // Route through the full agent — handleSubmit queues if already busy
-                handleSubmitRef.current?.(content);
+                // Push to queue — drained safely inside React's render cycle
+                discordQueueRef.current.push({ msg, username, content });
               });
               pushStatic({ type: 'info', content: `✔ Discord bot connected as ${DISCORD_STATE.username}. DMs will appear here and be answered by the active model.` });
             } catch (err) {
@@ -2491,6 +2489,20 @@ triggers: <comma-separated words that should activate it, include "${skillName.t
   );
 
   useEffect(() => { handleSubmitRef.current = handleSubmit; }, [handleSubmit]);
+
+  // Drain Discord DM queue inside React's render cycle (safe for Ink)
+  useEffect(() => {
+    const id = setInterval(() => {
+      const item = discordQueueRef.current.shift();
+      if (!item) return;
+      const { msg, username, content } = item;
+      activeDiscordMsgRef.current = msg;
+      discordOriginRef.current    = true;
+      pushStatic({ type: 'user', content: `[Discord: ${username}]\n${content}` });
+      handleSubmitRef.current?.(content);
+    }, 100);
+    return () => clearInterval(id);
+  }, [pushStatic]);
 
   const handleConfirmAnswer = useCallback((answer) => {
     if (answer === 'always') {
