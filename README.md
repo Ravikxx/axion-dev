@@ -240,6 +240,42 @@ AXION_GOOGLE_CLIENT_SECRET=...
 
 ---
 
+## Discord Bot
+
+Chat with the Axion agent directly from Discord DMs.
+
+### Setup
+1. Create a bot at [discord.com/developers](https://discord.com/developers/applications)
+2. Enable **Message Content Intent** under Bot → Privileged Gateway Intents
+3. Invite the bot to your server (or DM it directly)
+4. Save the token: `/discord token <BOT_TOKEN>`
+5. Connect: `/discord start`
+
+### How it works
+- DMs sent to the bot appear in the CLI labeled `[Discord: username]`
+- The full agent responds — file access, tools, confirmations, MCP servers
+- The response is sent back to Discord automatically (long replies are split)
+- If the agent needs permission to run a tool, it DMs you a y/n prompt
+- The bot shows a typing indicator while processing
+
+### Commands
+| Command | Description |
+|---|---|
+| `/discord token <TOKEN>` | Save bot token |
+| `/discord start` | Connect (auto-reconnects on next launch) |
+| `/discord stop` | Disconnect (disables auto-reconnect) |
+| `/discord status` | Show connection info |
+
+### Standalone daemon
+`axion-discord` runs a persistent bot without the TUI — useful for a server:
+
+```bash
+axion-discord
+axion-discord --model claude
+```
+
+---
+
 ## Chrome Extension
 
 1. Open `chrome://extensions`

@@ -98,6 +98,13 @@ export function saveDiscordToken(token) {
   save(_cfg);
 }
 
+export function getDiscordAutoStart() { return _cfg.discordAutoStart || false; }
+
+export function saveDiscordAutoStart(val) {
+  _cfg.discordAutoStart = val;
+  save(_cfg);
+}
+
 // ── Persistent memory ────────────────────────────────────────────────────────
 
 const MEMORY_FILE = join(DIR, 'memory.json');

@@ -61,6 +61,11 @@ export async function stopDiscord() {
   DISCORD_STATE.username = null;
 }
 
+export async function sendTyping(channelOrMsg) {
+  if (!client) return;
+  try { await (channelOrMsg.channel ?? channelOrMsg).sendTyping(); } catch {}
+}
+
 export async function sendDM(channelOrMsg, text) {
   if (!client) throw new Error('Discord bot not running');
   const channel = channelOrMsg.channel ?? channelOrMsg;

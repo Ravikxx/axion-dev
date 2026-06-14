@@ -171,6 +171,32 @@
 
   <div class="announcement">
     <div class="ann-meta">
+      <span class="ann-tag release">Release</span>
+      <span class="ann-date">June 13, 2026</span>
+    </div>
+    <h2>Discord Bot Integration</h2>
+    <p>
+      Axion now has a fully bidirectional Discord bridge. DMs sent to your bot appear in the CLI
+      labeled <code>[Discord: username]</code>, the full agent responds (including file access, tools,
+      and MCP servers), and the reply is sent back to Discord automatically.
+    </p>
+    <p style="margin-top:12px">Key features in this release:</p>
+    <ul style="margin-top:8px; margin-left:20px; color:var(--text-muted)">
+      <li>Bidirectional CLI&#8596;Discord bridge — chat from either end</li>
+      <li>Confirmation prompts — tool permission requests arrive as DMs, reply y/n</li>
+      <li>Typing indicator while the agent processes your message</li>
+      <li>Error feedback — if the agent fails, Discord gets a &#9888;&#65039; message instead of silence</li>
+      <li>Auto-reconnect — <code>/discord start</code> sets a preference; the bot reconnects on next launch</li>
+      <li>Per-user rate limiting (2s cooldown) and automatic message splitting for the 2000-char limit</li>
+      <li><code>axion-discord</code> standalone daemon — run a persistent bot without the TUI</li>
+    </ul>
+    <div class="ann-footer">
+      <a class="ann-link" href="https://github.com/Ravikxx/axion">Setup Guide (README) &#8594;</a>
+    </div>
+  </div>
+
+  <div class="announcement">
+    <div class="ann-meta">
       <span class="ann-tag notice">Notice</span>
       <span class="ann-date">June 13, 2026</span>
     </div>

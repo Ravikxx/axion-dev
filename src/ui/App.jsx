@@ -26,7 +26,7 @@ import {
   getCustomCommands,
   getAllowedTools, allowTool, clearAllowedTools,
   getSkills, saveSkill, deleteSkill,
-  getDiscordToken, saveDiscordToken,
+  getDiscordToken, saveDiscordToken, getDiscordAutoStart, saveDiscordAutoStart,
 } from '../persist.js';
 import { COMMANDS } from './Suggestions.jsx';
 import { THEMES, setTheme, themeName, accent } from './theme.js';
@@ -35,7 +35,7 @@ import { connectOAuth, listOAuthTokens, revokeOAuthToken, getOAuthToken } from '
 import { OAUTH_PROVIDERS } from '../oauth/providers.js';
 import { captureScreen, MACRO_STATE, showOverlay, hideOverlay } from '../agent/computer.js';
 import { MCP, getMcpConfig, saveMcpConfig } from '../agent/mcp.js';
-import { startDiscord, stopDiscord, sendDM, DISCORD_STATE } from '../agent/discord.js';
+import { startDiscord, stopDiscord, sendDM, sendTyping, DISCORD_STATE } from '../agent/discord.js';
 import { MCP_MARKETPLACE, CATEGORIES, searchMarketplace, getMarketplaceEntry } from '../agent/mcp-marketplace.js';
 import { analyzeScreen } from '../agent/vision.js';
 import { generateImage } from '../agent/image.js';
@@ -575,6 +575,18 @@ export function App({
   useEffect(() => {
     if (!initialPrompt) return;
     setTimeout(() => handleSubmit(initialPrompt), 0);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-reconnect Discord bot if it was running in the last session
+  useEffect(() => {
+    if (!getDiscordAutoStart() || !getDiscordToken()) return;
+    startDiscord(getDiscordToken(), (msg) => {
+      const content = msg.content?.trim();
+      if (!content) return;
+      discordQueueRef.current.push({ msg, username: msg.author.tag, content });
+    }).then(() => {
+      pushStatic({ type: 'info', content: `✔ Discord bot auto-connected as ${DISCORD_STATE.username}.` });
+    }).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Core run (handles goal loop) ───────────────────────────────────────────
@@ -2081,6 +2093,7 @@ triggers: <comma-separated words that should activate it, include "${skillName.t
                 if (!content) return;
                 discordQueueRef.current.push({ msg, username, content });
               });
+              saveDiscordAutoStart(true);
               pushStatic({ type: 'info', content: `✔ Discord bot connected as ${DISCORD_STATE.username}. DMs will appear here and be answered by the active model.` });
             } catch (err) {
               pushStatic({ type: 'error', content: `Failed to connect: ${err.message}` });
@@ -2092,6 +2105,7 @@ triggers: <comma-separated words that should activate it, include "${skillName.t
           if (sub === 'stop') {
             if (!DISCORD_STATE.running) { pushStatic({ type: 'info', content: 'Discord bot is not running.' }); return true; }
             await stopDiscord();
+            saveDiscordAutoStart(false);
             activeDiscordMsgRef.current = null;
             discordOriginRef.current    = false;
             pushStatic({ type: 'info', content: '◈ Discord bot disconnected.' });
@@ -2477,8 +2491,14 @@ triggers: <comma-separated words that should activate it, include "${skillName.t
             .filter(m => m.type === 'assistant')
             .map(m => m.content)
             .join('');
+          const errorText = liveRef.current
+            .filter(m => m.type === 'error')
+            .map(m => m.content)
+            .join('\n');
           if (assistantText) {
             try { await sendDM(activeDiscordMsgRef.current, assistantText); } catch {}
+          } else if (errorText) {
+            try { await sendDM(activeDiscordMsgRef.current, `⚠️ Something went wrong: ${errorText.slice(0, 1800)}`); } catch {}
           }
           // Keep activeDiscordMsgRef for subsequent CLI turns so they also forward
           // (only clear discordOrigin so we don't double-label next user message)
@@ -2528,6 +2548,7 @@ triggers: <comma-separated words that should activate it, include "${skillName.t
       // Normal message — route through the full agent
       activeDiscordMsgRef.current = msg;
       discordOriginRef.current    = true;
+      sendTyping(msg).catch(() => {});
       pushStatic({ type: 'user', content: `[Discord: ${username}]\n${content}` });
       handleSubmitRef.current?.(content);
     }, 100);
