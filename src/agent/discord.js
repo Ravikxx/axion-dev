@@ -17,6 +17,25 @@ function isRateLimited(userId) {
   return false;
 }
 
+// Track bot replies so edits can update them: userMsgId → Message[]
+const _sentReplies = new Map();
+
+export function trackReply(userMsgId, messages) {
+  _sentReplies.set(userMsgId, messages);
+}
+
+export async function editReply(userMsgId, channelOrMsg, newText) {
+  const prev = _sentReplies.get(userMsgId);
+  const LIMIT = 1900;
+  if (prev?.length === 1 && newText.length <= LIMIT) {
+    try { await prev[0].edit(newText); return; } catch {}
+  }
+  // Multi-message or edit failed — delete old messages and send fresh
+  if (prev) for (const m of prev) { try { await m.delete(); } catch {} }
+  const sent = await _sendChunks(channelOrMsg, newText);
+  _sentReplies.set(userMsgId, sent);
+}
+
 export async function startDiscord(token, onMessage) {
   if (client) await stopDiscord();
 
@@ -50,6 +69,13 @@ export async function startDiscord(token, onMessage) {
     if (isRateLimited(msg.author.id)) return;
     await _onMessage(msg);
   });
+
+  client.on(Events.MessageUpdate, async (oldMsg, newMsg) => {
+    if (newMsg.partial) { try { await newMsg.fetch(); } catch { return; } }
+    if (newMsg.author?.bot || newMsg.guild || !_onMessage) return;
+    if (!newMsg.content || newMsg.content === oldMsg.content) return;
+    await _onMessage(newMsg, { isEdit: true, originalMsgId: oldMsg.id });
+  });
 }
 
 export async function stopDiscord() {
@@ -59,6 +85,7 @@ export async function stopDiscord() {
   client = null;
   DISCORD_STATE.running = false;
   DISCORD_STATE.username = null;
+  _sentReplies.clear();
 }
 
 export async function sendTyping(channelOrMsg) {
@@ -66,23 +93,27 @@ export async function sendTyping(channelOrMsg) {
   try { await (channelOrMsg.channel ?? channelOrMsg).sendTyping(); } catch {}
 }
 
+// Returns Message[] so callers can track replies for edit support
 export async function sendDM(channelOrMsg, text) {
   if (!client) throw new Error('Discord bot not running');
+  return _sendChunks(channelOrMsg, text);
+}
+
+async function _sendChunks(channelOrMsg, text) {
   const channel = channelOrMsg.channel ?? channelOrMsg;
-  const LIMIT = 1900; // stay under 2000 with a margin
-  if (text.length <= LIMIT) {
-    await channel.send(text);
-    return;
-  }
+  const LIMIT = 1900;
+  if (text.length <= LIMIT) return [await channel.send(text)];
   // Split on newlines where possible to avoid cutting mid-word or mid-codeblock
   const chunks = [];
   let remaining = text;
   while (remaining.length > LIMIT) {
     let cut = remaining.lastIndexOf('\n', LIMIT);
-    if (cut < LIMIT / 2) cut = LIMIT; // no good newline, hard cut
+    if (cut < LIMIT / 2) cut = LIMIT;
     chunks.push(remaining.slice(0, cut));
     remaining = remaining.slice(cut).trimStart();
   }
   if (remaining) chunks.push(remaining);
-  for (const chunk of chunks) await channel.send(chunk);
+  const sent = [];
+  for (const chunk of chunks) sent.push(await channel.send(chunk));
+  return sent;
 }

@@ -35,7 +35,7 @@ import { connectOAuth, listOAuthTokens, revokeOAuthToken, getOAuthToken } from '
 import { OAUTH_PROVIDERS } from '../oauth/providers.js';
 import { captureScreen, MACRO_STATE, showOverlay, hideOverlay } from '../agent/computer.js';
 import { MCP, getMcpConfig, saveMcpConfig } from '../agent/mcp.js';
-import { startDiscord, stopDiscord, sendDM, sendTyping, DISCORD_STATE } from '../agent/discord.js';
+import { startDiscord, stopDiscord, sendDM, sendTyping, trackReply, editReply, DISCORD_STATE } from '../agent/discord.js';
 import { MCP_MARKETPLACE, CATEGORIES, searchMarketplace, getMarketplaceEntry } from '../agent/mcp-marketplace.js';
 import { analyzeScreen } from '../agent/vision.js';
 import { generateImage } from '../agent/image.js';
@@ -366,6 +366,8 @@ export function App({
   const activeDiscordMsgRef      = useRef(null);  // Discord msg to reply to after this turn
   const discordOriginRef         = useRef(false);  // true when current turn was triggered by a Discord DM
   const discordAwaitingConfirmRef = useRef(false); // true when agent is paused waiting for Discord y/n
+  const discordBusyRef           = useRef(false);  // true while a Discord-originated turn is in flight
+  const activeDiscordEditRef     = useRef(null);   // originalMsgId if current turn is an edit re-process
   // Queue for Discord DMs — drained inside React's render cycle to avoid
   // calling setState from a Node EventEmitter callback (unreliable with Ink)
   const discordQueueRef     = useRef([]);
@@ -577,14 +579,31 @@ export function App({
     setTimeout(() => handleSubmit(initialPrompt), 0);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Shared handler factory for Discord onMessage — handles queue cap, cancel routing, edit dedup
+  const makeDiscordHandler = useCallback(() => (msg, meta = {}) => {
+    const content = msg.content?.trim();
+    if (!content) return;
+    const username = msg.author.tag;
+    const isCancel = /^(\/cancel|cancel|\/stop|stop)$/i.test(content);
+    if (!isCancel) {
+      // Queue cap: reject new messages while busy (but allow edits through)
+      if (discordBusyRef.current && !meta.isEdit) {
+        sendDM(msg, 'Still thinking… send `cancel` to stop, or wait for my reply.').catch(() => {});
+        return;
+      }
+      // Edit: replace any existing pending item from this user
+      if (meta.isEdit) {
+        const idx = discordQueueRef.current.findIndex(i => i.msg.author.id === msg.author.id && !i.isCancel);
+        if (idx !== -1) discordQueueRef.current.splice(idx, 1);
+      }
+    }
+    discordQueueRef.current.push({ msg, username, content, isCancel, ...meta });
+  }, []);
+
   // Auto-reconnect Discord bot if it was running in the last session
   useEffect(() => {
     if (!getDiscordAutoStart() || !getDiscordToken()) return;
-    startDiscord(getDiscordToken(), (msg) => {
-      const content = msg.content?.trim();
-      if (!content) return;
-      discordQueueRef.current.push({ msg, username: msg.author.tag, content });
-    }).then(() => {
+    startDiscord(getDiscordToken(), makeDiscordHandler()).then(() => {
       pushStatic({ type: 'info', content: `✔ Discord bot auto-connected as ${DISCORD_STATE.username}.` });
     }).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -2087,12 +2106,7 @@ triggers: <comma-separated words that should activate it, include "${skillName.t
             if (DISCORD_STATE.running) { pushStatic({ type: 'info', content: `Discord bot already running as ${DISCORD_STATE.username}.` }); return true; }
             pushStatic({ type: 'info', content: 'Connecting Discord bot…' });
             try {
-              await startDiscord(token, (msg) => {
-                const username = msg.author.tag;
-                const content  = msg.content?.trim();
-                if (!content) return;
-                discordQueueRef.current.push({ msg, username, content });
-              });
+              await startDiscord(token, makeDiscordHandler());
               saveDiscordAutoStart(true);
               pushStatic({ type: 'info', content: `✔ Discord bot connected as ${DISCORD_STATE.username}. DMs will appear here and be answered by the active model.` });
             } catch (err) {
@@ -2495,11 +2509,21 @@ triggers: <comma-separated words that should activate it, include "${skillName.t
             .filter(m => m.type === 'error')
             .map(m => m.content)
             .join('\n');
+          const originalMsgId = activeDiscordEditRef.current;
           if (assistantText) {
-            try { await sendDM(activeDiscordMsgRef.current, assistantText); } catch {}
+            try {
+              if (originalMsgId) {
+                await editReply(originalMsgId, activeDiscordMsgRef.current, assistantText);
+              } else {
+                const sent = await sendDM(activeDiscordMsgRef.current, assistantText);
+                trackReply(activeDiscordMsgRef.current.id, sent);
+              }
+            } catch {}
           } else if (errorText) {
             try { await sendDM(activeDiscordMsgRef.current, `⚠️ Something went wrong: ${errorText.slice(0, 1800)}`); } catch {}
           }
+          activeDiscordEditRef.current = null;
+          discordBusyRef.current = false;
           // Keep activeDiscordMsgRef for subsequent CLI turns so they also forward
           // (only clear discordOrigin so we don't double-label next user message)
           discordOriginRef.current = false;
@@ -2523,7 +2547,15 @@ triggers: <comma-separated words that should activate it, include "${skillName.t
       if (discordQueueRef.current.length === 0) return;
       const item = discordQueueRef.current.shift();
       if (!item) return;
-      const { msg, username, content } = item;
+      const { msg, username, content, isCancel, isEdit, originalMsgId } = item;
+
+      // Cancel command — abort current run immediately
+      if (isCancel) {
+        agentRef.current?.cancel();
+        sendDM(msg, '⏹ Cancelled.').catch(() => {});
+        discordBusyRef.current = false;
+        return;
+      }
 
       // If the agent is paused waiting for a y/n confirmation from Discord
       if (discordAwaitingConfirmRef.current) {
@@ -2545,11 +2577,14 @@ triggers: <comma-separated words that should activate it, include "${skillName.t
         return;
       }
 
-      // Normal message — route through the full agent
+      // Normal or edit message — route through the full agent
+      discordBusyRef.current      = true;
       activeDiscordMsgRef.current = msg;
+      activeDiscordEditRef.current = isEdit ? (originalMsgId ?? null) : null;
       discordOriginRef.current    = true;
       sendTyping(msg).catch(() => {});
-      pushStatic({ type: 'user', content: `[Discord: ${username}]\n${content}` });
+      const label = isEdit ? `[Discord: ${username}] (edited)` : `[Discord: ${username}]`;
+      pushStatic({ type: 'user', content: `${label}\n${content}` });
       handleSubmitRef.current?.(content);
     }, 100);
     return () => clearInterval(id);
