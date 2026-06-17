@@ -526,27 +526,37 @@ export function App({
     // Seed image model from saved config
     const savedImg = getSavedImageModel();
     if (savedImg) IMAGE_GEN_MODEL.current = savedImg;
-    // Drain locally-saved contributions to axion-collect daemon if it's running
+    // Drain locally-saved contributions to axion-collect daemon or configured webhook
     (async () => {
+      const pendingDir = join(homedir(), '.axion', 'donations');
+      if (!existsSync(pendingDir)) return;
+      const files = readdirSync(pendingDir).filter(f => f.endsWith('.json'));
+      if (!files.length) return;
+
+      // Prefer local daemon; fall back to configured webhook
+      let endpoint = null;
       try {
-        const statusRes = await fetch('http://127.0.0.1:47832/status', { signal: AbortSignal.timeout(600) });
-        if (!statusRes.ok) return;
-        const pendingDir = join(homedir(), '.axion', 'donations');
-        if (!existsSync(pendingDir)) return;
-        const files = readdirSync(pendingDir).filter(f => f.endsWith('.json'));
-        for (const f of files) {
-          try {
-            const fp = join(pendingDir, f);
-            const data = JSON.parse(readFileSync(fp, 'utf8'));
-            const r = await fetch('http://127.0.0.1:47832/collect', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(data),
-            });
-            if (r.ok) unlinkSync(fp);
-          } catch {}
-        }
+        const s = await fetch('http://127.0.0.1:47832/status', { signal: AbortSignal.timeout(600) });
+        if (s.ok) endpoint = 'http://127.0.0.1:47832/collect';
       } catch {}
+      if (!endpoint) {
+        const wh = getDonateWebhook();
+        if (wh) endpoint = wh.endsWith('/collect') ? wh : wh.replace(/\/$/, '') + '/collect';
+      }
+      if (!endpoint) return;
+
+      for (const f of files) {
+        try {
+          const fp   = join(pendingDir, f);
+          const data = JSON.parse(readFileSync(fp, 'utf8'));
+          const r    = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+          });
+          if (r.ok) unlinkSync(fp);
+        } catch {}
+      }
     })();
   }, []);
 
