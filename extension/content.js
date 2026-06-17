@@ -50,7 +50,7 @@ function findElements({ selector, text: textQuery, limit = 10 } = {}) {
   if (selector) {
     els = [...document.querySelectorAll(selector)];
   } else if (textQuery) {
-    const all = document.querySelectorAll('a,button,input,select,textarea,label,[role=button],[role=link]');
+    const all = document.querySelectorAll('a,button,input,select,textarea,label,[role=button],[role=link],[contenteditable]');
     const q = textQuery.toLowerCase();
     els = [...all].filter(el => (el.innerText || el.value || el.placeholder || el.getAttribute('aria-label') || '').toLowerCase().includes(q));
   }
@@ -76,8 +76,20 @@ function typeText({ selector, text: textQuery, value, clear = true } = {}) {
   if (!value) throw new Error('"value" is required');
   const el = resolveEl(selector, textQuery) || document.activeElement;
   el.focus();
+
+  if (el.isContentEditable) {
+    // contenteditable divs (e.g. Claude, Notion, ProseMirror/Lexical editors):
+    // execCommand fires the mutation events these frameworks listen to.
+    if (clear) {
+      document.execCommand('selectAll', false, null);
+      document.execCommand('delete', false, null);
+    }
+    document.execCommand('insertText', false, value);
+    return { typed: value.slice(0, 60), into: el.tagName.toLowerCase() };
+  }
+
+  // Standard <input> / <textarea> path
   if (clear) { el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); }
-  // Simulate character-by-character for React inputs
   const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value') ||
                        Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value');
   if (nativeSetter?.set) nativeSetter.set.call(el, value);
@@ -121,7 +133,7 @@ function resolveEl(selector, textQuery) {
     if (el) return el;
   }
   if (textQuery) {
-    const all = document.querySelectorAll('a,button,input,select,textarea,label,[role=button],[role=link],[role=menuitem]');
+    const all = document.querySelectorAll('a,button,input,select,textarea,label,[role=button],[role=link],[role=menuitem],[contenteditable]');
     const q = textQuery.toLowerCase();
     const found = [...all].find(el =>
       isVisible(el) &&
