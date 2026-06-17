@@ -9,6 +9,7 @@ import { captureScreen, captureScreenAnnotated, uiaClickElement, mouseClick, typ
 import { analyzeScreen, parseCoordinates } from './vision.js';
 import { executeGoogleTool, GOOGLE_TOOL_DEFINITIONS, GOOGLE_TOOL_DEFINITIONS_OPENAI } from './google.js';
 import { getOAuthToken } from '../oauth/oauth.js';
+import { logToolCall, logVisionResponse, saveScreenshot } from '../debug.js';
 
 // Background tasks started via run_command background=true
 const BG_TASKS = new Map();
@@ -408,12 +409,7 @@ export const COMPUTER_TOOL_DEFINITIONS_OPENAI = COMPUTER_TOOL_DEFINITIONS.map((t
 
 const MACRO_RECORDABLE = new Set(['click_on', 'click_at', 'type_text', 'press_key', 'scroll', 'find_text']);
 
-export async function executeTool(name, input, { agentLabel = 'main', onNotify = () => {} } = {}) {
-  // Log to active macro recording before executing
-  if (MACRO_STATE.recording && MACRO_RECORDABLE.has(name)) {
-    MACRO_STATE.steps.push({ name, input: { ...input } });
-  }
-
+async function _executeToolInner(name, input, { agentLabel = 'main', onNotify = () => {} } = {}) {
   try {
     switch (name) {
 
@@ -703,8 +699,9 @@ export async function executeTool(name, input, { agentLabel = 'main', onNotify =
       // ── Computer use ──────────────────────────────────────────────────────────
 
       case 'screenshot': {
-        const { base64, mediaType, width, height } = captureScreen();
+        const { base64, mediaType, width, height, debugPath } = captureScreenAnnotated();
         const description = await analyzeScreen({ base64, mediaType, question: input.question, width, height });
+        logVisionResponse(debugPath, input.question, description);
         return { success: true, output: description };
       }
 
@@ -727,11 +724,12 @@ export async function executeTool(name, input, { agentLabel = 'main', onNotify =
         }
 
         // Strategy 3: Vision with pixel-labeled grid — fallback for icons/images with no text.
-        const { base64, mediaType, width, height } = captureScreenAnnotated();
+        const { base64, mediaType, width, height, debugPath } = captureScreenAnnotated();
         const sw = width  || 1920;
         const sh = height || 1080;
         const posPrompt = `This screenshot has a red coordinate grid overlaid. Lines appear every 5% of the screen. Every 10% line is labeled with its actual pixel value (e.g. "192" at the line means X=192 pixels from the left; "108" means Y=108 pixels from the top). Corners show: "0,0" top-left, "${sw},0" top-right, "0,${sh}" bottom-left, "${sw},${sh}" bottom-right.\n\nFind "${input.target}" and report its pixel position.\nReply with ONLY two integers: X,Y (e.g. 960,540)\nNothing else.`;
         const posText = await analyzeScreen({ base64, mediaType, question: posPrompt, width: 0, height: 0 });
+        logVisionResponse(debugPath, posPrompt, posText);
 
         const nums = posText.match(/(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)/);
         if (!nums) {
@@ -806,6 +804,19 @@ export async function executeTool(name, input, { agentLabel = 'main', onNotify =
     const combined = [err.stdout, err.stderr].filter(Boolean).join('\n').trim();
     return { success: false, output: combined || err.message || String(err) };
   }
+}
+
+export async function executeTool(name, input, opts = {}) {
+  const { agentLabel = 'main', iteration = null } = opts;
+  // Log to active macro recording before executing
+  if (MACRO_STATE.recording && MACRO_RECORDABLE.has(name)) {
+    MACRO_STATE.steps.push({ name, input: { ...input } });
+  }
+
+  const start = Date.now();
+  const result = await _executeToolInner(name, input, opts);
+  logToolCall(name, input, result, Date.now() - start, iteration);
+  return result;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

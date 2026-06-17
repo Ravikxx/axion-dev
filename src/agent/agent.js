@@ -14,6 +14,7 @@ import { MCP } from './mcp.js';
 import { GOOGLE_TOOL_DEFINITIONS, GOOGLE_TOOL_DEFINITIONS_OPENAI } from './google.js';
 import { getOAuthToken } from '../oauth/oauth.js';
 import { homedir } from 'os';
+import { saveSession } from '../debug.js';
 
 // ── Project context (read once at startup) ────────────────────────────────────
 
@@ -400,6 +401,7 @@ CRITICAL RULES — follow these exactly:
     }
 
     await this._agentLoop(askConfirm);
+    saveSession(this.history, this.modelAlias, this.inputTokens, this.outputTokens);
   }
 
   // ── Agent loop ────────────────────────────────────────────────────────────
@@ -466,7 +468,7 @@ CRITICAL RULES — follow these exactly:
           toolCalls.map(tc =>
             MCP.isMcpTool(tc.name)
               ? MCP.callTool(tc.name, tc.input)
-              : executeTool(tc.name, tc.input, { agentLabel: this.label, onNotify: this.onNotify })
+              : executeTool(tc.name, tc.input, { agentLabel: this.label, onNotify: this.onNotify, iteration: iterations })
           )
         );
         for (let i = 0; i < toolCalls.length; i++) {
@@ -505,7 +507,7 @@ CRITICAL RULES — follow these exactly:
           } else if (MCP.isMcpTool(tc.name)) {
             result = await MCP.callTool(tc.name, tc.input);
           } else {
-            result = await executeTool(tc.name, tc.input, { agentLabel: this.label, onNotify: this.onNotify });
+            result = await executeTool(tc.name, tc.input, { agentLabel: this.label, onNotify: this.onNotify, iteration: iterations });
           }
           toolResults.push({ id: tc.id, name: tc.name, ...result });
           this.onToolResult({ id: tc.id, name: tc.name, ...result });

@@ -2,6 +2,7 @@ import { execSync, spawn } from 'child_process';
 import { readFileSync, writeFileSync, unlinkSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { saveScreenshot } from '../debug.js';
 
 // Write a temp .ps1 file to avoid inline escaping hell, then run it.
 function runPowerShell(script, timeoutMs = 10000) {
@@ -299,19 +300,25 @@ Write-Output "$($screen.Width)x$($screen.Height)"
     const data = readFileSync(imgPath);
     try { unlinkSync(imgPath); } catch {}
     const [w, h] = (dims || '0x0').split('x').map(Number);
-    return { base64: data.toString('base64'), mediaType: 'image/png', width: w || 0, height: h || 0 };
+    const b64 = data.toString('base64');
+    const debugPath = saveScreenshot(b64, '-plain');
+    return { base64: b64, mediaType: 'image/png', width: w || 0, height: h || 0, debugPath };
 
   } else if (process.platform === 'darwin') {
     execSync(`screencapture -x "${imgPath}"`, { timeout: 5000 });
     const data = readFileSync(imgPath);
     try { unlinkSync(imgPath); } catch {}
-    return { base64: data.toString('base64'), mediaType: 'image/png', width: 0, height: 0 };
+    const b64 = data.toString('base64');
+    const debugPath = saveScreenshot(b64, '-plain');
+    return { base64: b64, mediaType: 'image/png', width: 0, height: 0, debugPath };
 
   } else {
     captureLinuxScreen(imgPath);
     const data = readFileSync(imgPath);
     try { unlinkSync(imgPath); } catch {}
-    return { base64: data.toString('base64'), mediaType: 'image/png', width: 0, height: 0 };
+    const b64 = data.toString('base64');
+    const debugPath = saveScreenshot(b64, '-plain');
+    return { base64: b64, mediaType: 'image/png', width: 0, height: 0, debugPath };
   }
 }
 
@@ -420,7 +427,9 @@ Write-Output "$W x $H"
     const m = (dims || '').match(/(\d+)\s*x\s*(\d+)/);
     const w = m ? Number(m[1]) : 0;
     const h = m ? Number(m[2]) : 0;
-    return { base64: data.toString('base64'), mediaType: 'image/png', width: w || 0, height: h || 0 };
+    const b64 = data.toString('base64');
+    const debugPath = saveScreenshot(b64, '-annotated');
+    return { base64: b64, mediaType: 'image/png', width: w || 0, height: h || 0, debugPath };
 
   } else {
     // Linux / macOS: annotate with ImageMagick if available, else plain screenshot
@@ -442,10 +451,14 @@ Write-Output "$W x $H"
       const annPath = annotateWithImageMagick(imgPath, logW || 1920, logH || 1080);
       const data = readFileSync(annPath);
       try { unlinkSync(annPath); } catch {}
-      return { base64: data.toString('base64'), mediaType: 'image/png', width: logW, height: logH };
+      const b64 = data.toString('base64');
+      const debugPath = saveScreenshot(b64, '-annotated');
+      return { base64: b64, mediaType: 'image/png', width: logW, height: logH, debugPath };
     } catch {
       const data = readFileSync(imgPath);
-      return { base64: data.toString('base64'), mediaType: 'image/png', width: logW, height: logH };
+      const b64 = data.toString('base64');
+      const debugPath = saveScreenshot(b64, '-annotated');
+      return { base64: b64, mediaType: 'image/png', width: logW, height: logH, debugPath };
     } finally {
       try { unlinkSync(imgPath); } catch {}
     }
