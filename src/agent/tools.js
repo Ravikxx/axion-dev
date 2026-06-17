@@ -156,26 +156,39 @@ export const TOOL_DEFINITIONS = [
   },
   {
     name: 'run_command',
-    description: 'Run a shell command and return stdout/stderr. Set background=true for long-running commands (dev servers, watchers) — returns a task id immediately; use check_task to read output later.',
+    description: 'Run a shell command and return stdout/stderr. Set background=true for long-running or interactive commands — returns a task id immediately. Use check_task to read output and send_input to write to stdin (for programs that prompt for input).',
     input_schema: {
       type: 'object',
       properties: {
-        command: { type: 'string' },
-        background: { type: 'boolean', description: 'Run detached and return a task id immediately' },
+        command:    { type: 'string' },
+        background: { type: 'boolean', description: 'Run in background and return a task id immediately. Required for interactive programs.' },
       },
       required: ['command'],
     },
   },
   {
     name: 'check_task',
-    description: 'Check a background task started with run_command background=true. No id lists all tasks. Set kill=true to stop one.',
+    description: 'Check output of a background task started with run_command background=true. No id lists all tasks. Set kill=true to stop one.',
     input_schema: {
       type: 'object',
       properties: {
-        id: { type: 'string', description: 'Task id; omit to list all' },
+        id:   { type: 'string', description: 'Task id; omit to list all' },
         kill: { type: 'boolean', description: 'Stop the task' },
       },
       required: [],
+    },
+  },
+  {
+    name: 'send_input',
+    description: 'Send text to stdin of a running background task. Use this to interact with programs that prompt for input — REPLs, interactive CLIs, games, anything that reads from stdin. Always start the program with run_command background=true first, then use check_task to see what it printed, then send_input to respond.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id:   { type: 'string', description: 'Background task id from run_command' },
+        text: { type: 'string', description: 'Text to send. Include \\n for Enter (e.g. "42\\n"). Can send multiple lines at once.' },
+        end:  { type: 'boolean', description: 'Close stdin after writing (sends EOF). Use when the program reads until end-of-input.' },
+      },
+      required: ['id', 'text'],
     },
   },
   {
@@ -561,6 +574,19 @@ export async function executeTool(name, input, { agentLabel = 'main', onNotify =
         const status = task.exitCode === null ? 'running' : `exited with code ${task.exitCode}`;
         if (task.exitCode !== null) BG_TASKS.delete(input.id); // final read cleans up
         return { success: true, output: `${task.id} (${status})\n── output (last 20k chars) ──\n${task.output || '(no output yet)'}` };
+      }
+
+      case 'send_input': {
+        const task = BG_TASKS.get(input.id);
+        if (!task) return { success: false, output: `No such task: ${input.id}` };
+        if (task.exitCode !== null) return { success: false, output: `Task ${input.id} has already exited (code ${task.exitCode}).` };
+        if (!task.proc.stdin || task.proc.stdin.destroyed) return { success: false, output: `Task ${input.id} stdin is closed or unavailable.` };
+        task.proc.stdin.write(input.text);
+        if (input.end) task.proc.stdin.end();
+        // Brief wait so output from the program has time to arrive
+        await new Promise(r => setTimeout(r, 250));
+        const st = task.exitCode === null ? 'running' : `exited (${task.exitCode})`;
+        return { success: true, output: `Input sent. [${st}]\n── output ──\n${task.output || '(no output yet)'}` };
       }
 
       case 'git_status': {
