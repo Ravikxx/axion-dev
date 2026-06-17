@@ -109,8 +109,6 @@ export function saveDiscordAutoStart(val) {
 
 export function getDonateOptOut()      { return _cfg.donateOptOut  || false; }
 export function saveDonateOptOut(val)  { _cfg.donateOptOut = val;  save(_cfg); }
-export function getDonateWebhook()     { return _cfg.donateWebhook || null; }
-export function saveDonateWebhook(url) { _cfg.donateWebhook = url || null; save(_cfg); }
 
 const DONATIONS_DIR = join(DIR, 'donations');
 

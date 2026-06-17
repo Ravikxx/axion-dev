@@ -27,7 +27,7 @@ import {
   getAllowedTools, allowTool, clearAllowedTools,
   getSkills, saveSkill, deleteSkill,
   getDiscordToken, saveDiscordToken, getDiscordAutoStart, saveDiscordAutoStart,
-  getDonateOptOut, saveDonateOptOut, getDonateWebhook, saveDonateWebhook, saveDonation,
+  getDonateOptOut, saveDonateOptOut, saveDonation,
 } from '../persist.js';
 import { COMMANDS } from './Suggestions.jsx';
 import { THEMES, setTheme, themeName, accent } from './theme.js';
@@ -164,7 +164,6 @@ const HELP_TEXT = `  Commands
   /contribute                   share this session as training data (prompted automatically)
   /contribute skip              dismiss contribution prompt for this session
   /contribute optout [off]      permanently opt out (or re-enable)
-  /contribute webhook [url|clear] set/clear a POST endpoint for submissions
   /exit                         quit
 
   Shortcuts: Ctrl+R search history · Ctrl+P cycle mode · Ctrl+T thinking · Ctrl+O expand · \\ + Enter newline
@@ -540,10 +539,7 @@ export function App({
         const s = await fetch('http://127.0.0.1:47832/status', { signal: AbortSignal.timeout(600) });
         if (s.ok) endpoint = 'http://127.0.0.1:47832/collect';
       } catch {}
-      if (!endpoint) {
-        const wh = getDonateWebhook();
-        endpoint = wh ? (wh.endsWith('/collect') ? wh : wh.replace(/\/$/, '') + '/collect') : DEFAULT_COLLECTOR;
-      }
+      if (!endpoint) endpoint = DEFAULT_COLLECTOR;
 
       for (const f of files) {
         try {
@@ -2459,23 +2455,6 @@ triggers: <comma-separated words that should activate it, include "${skillName.t
             return true;
           }
 
-          if (sub === 'webhook') {
-            const url = args.slice(1).join(' ').trim();
-            if (!url) {
-              const current = getDonateWebhook();
-              pushStatic({ type: 'info', content: current ? `Webhook: ${current}\n\nRun /contribute webhook clear to remove.` : 'No webhook set.\n\nUsage: /contribute webhook <url>\n       /contribute webhook clear' });
-              return true;
-            }
-            if (url === 'clear') {
-              saveDonateWebhook(null);
-              pushStatic({ type: 'info', content: '✔ Webhook cleared.' });
-              return true;
-            }
-            saveDonateWebhook(url);
-            pushStatic({ type: 'info', content: `✔ Webhook saved: ${url}` });
-            return true;
-          }
-
           // Submit
           const hist = agentRef.current?.history;
           if (!hist || hist.length === 0) {
@@ -2485,16 +2464,14 @@ triggers: <comma-separated words that should activate it, include "${skillName.t
           donatePromptShownRef.current = true;
           const payload = { donatedAt: new Date().toISOString(), turns: hist.length, history: hist };
           const COLLECT_URL = 'https://axion-collect.axion-collect.workers.dev/collect';
-          // Try local daemon first, fall back to cloud collector
           const sendToCloud = () => {
-            const target = getDonateWebhook() || COLLECT_URL;
-            fetch(target, {
+            fetch(COLLECT_URL, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
             }).then(r => {
-              pushStatic({ type: 'info', content: r.ok ? '✔ Session contributed — thanks!' : `✔ Saved locally (collector returned ${r.status}).` });
-              if (!r.ok) saveDonation(hist);
+              if (r.ok) pushStatic({ type: 'info', content: '✔ Session contributed — thanks!' });
+              else { saveDonation(hist); pushStatic({ type: 'info', content: '✔ Saved locally (will retry on next launch).' }); }
             }).catch(() => {
               const f = saveDonation(hist);
               pushStatic({ type: 'info', content: `✔ Saved locally → ${f.replace(homedir(), '~')} (will retry on next launch).` });
