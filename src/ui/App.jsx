@@ -533,7 +533,8 @@ export function App({
       const files = readdirSync(pendingDir).filter(f => f.endsWith('.json'));
       if (!files.length) return;
 
-      // Prefer local daemon; fall back to configured webhook
+      // Prefer local daemon; fall back to configured webhook or default collector
+      const DEFAULT_COLLECTOR = 'https://axion-collect.axion-collect.workers.dev/collect';
       let endpoint = null;
       try {
         const s = await fetch('http://127.0.0.1:47832/status', { signal: AbortSignal.timeout(600) });
@@ -541,9 +542,8 @@ export function App({
       } catch {}
       if (!endpoint) {
         const wh = getDonateWebhook();
-        if (wh) endpoint = wh.endsWith('/collect') ? wh : wh.replace(/\/$/, '') + '/collect';
+        endpoint = wh ? (wh.endsWith('/collect') ? wh : wh.replace(/\/$/, '') + '/collect') : DEFAULT_COLLECTOR;
       }
-      if (!endpoint) return;
 
       for (const f of files) {
         try {
@@ -2484,37 +2484,31 @@ triggers: <comma-separated words that should activate it, include "${skillName.t
           }
           donatePromptShownRef.current = true;
           const payload = { donatedAt: new Date().toISOString(), turns: hist.length, history: hist };
-          // Try axion-collect daemon first (auto-drains saved files too)
+          const COLLECT_URL = 'https://axion-collect.axion-collect.workers.dev/collect';
+          // Try local daemon first, fall back to cloud collector
+          const sendToCloud = () => {
+            const target = getDonateWebhook() || COLLECT_URL;
+            fetch(target, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            }).then(r => {
+              pushStatic({ type: 'info', content: r.ok ? '✔ Session contributed — thanks!' : `✔ Saved locally (collector returned ${r.status}).` });
+              if (!r.ok) saveDonation(hist);
+            }).catch(() => {
+              const f = saveDonation(hist);
+              pushStatic({ type: 'info', content: `✔ Saved locally → ${f.replace(homedir(), '~')} (will retry on next launch).` });
+            });
+          };
           fetch('http://127.0.0.1:47832/collect', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
             signal: AbortSignal.timeout(2000),
           }).then(r => {
-            if (r.ok) {
-              pushStatic({ type: 'info', content: '✔ Sent to axion-collect.' });
-            } else {
-              const f = saveDonation(hist);
-              pushStatic({ type: 'info', content: `✔ Saved locally → ${f.replace(homedir(), '~')}\n   (axion-collect returned ${r.status})` });
-            }
-          }).catch(() => {
-            // Daemon not running — save locally
-            const f = saveDonation(hist);
-            pushStatic({ type: 'info', content: `✔ Saved locally → ${f.replace(homedir(), '~')}\n   Start axion-collect to auto-sync next time.` });
-          });
-          // Also POST to configured webhook if set
-          const webhook = getDonateWebhook();
-          if (webhook) {
-            fetch(webhook, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload),
-            }).then(r => {
-              pushStatic({ type: 'info', content: r.ok ? '✔ Also sent to webhook.' : `⚠ Webhook returned ${r.status}.` });
-            }).catch(e => {
-              pushStatic({ type: 'info', content: `⚠ Webhook failed: ${e.message}` });
-            });
-          }
+            if (r.ok) pushStatic({ type: 'info', content: '✔ Session contributed — thanks!' });
+            else sendToCloud();
+          }).catch(sendToCloud);
           return true;
         }
 
