@@ -18,7 +18,8 @@
     "dev": "node build.js && node dist/axion.js",
     "watch": "node watch.js",
     "web": "node build-web.js && node src/web/server.js",
-    "test": "node test/run.js"
+    "test": "node test/run.js",
+    "sync": "git fetch upstream && git rebase upstream/master && node build.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
