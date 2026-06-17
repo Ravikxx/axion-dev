@@ -190,7 +190,7 @@
   <p class="last-updated">Last updated: June 6, 2026</p>
 
   <div class="callout">
-    <strong>Short version:</strong> Axion is a local application. Your data never leaves your machine except to talk directly to the services you connect (Google, GitHub) or the AI provider you configure. Nothing goes to Axion Labs servers.
+    <strong>Short version:</strong> Axion is a local application. Your data never leaves your machine except to talk directly to the services you connect (Google, GitHub) or the AI provider you configure. Nothing goes to Axion Labs servers — unless you explicitly choose to donate a conversation with <code>/donate</code>.
   </div>
 
   <div class="policy-section">
@@ -227,6 +227,18 @@
       <li>OAuth tokens are stored locally on your device only</li>
       <li>No data is sent to Axion Labs servers</li>
       <li>Axion is a local application — all processing happens on your machine or through the AI provider you configure (Anthropic, OpenAI, etc.)</li>
+    </ul>
+  </div>
+
+  <div class="policy-section">
+    <h2>Training data donations</h2>
+    <p>Axion may suggest donating your conversation history to help improve future models. This is entirely opt-in — no data is ever collected without your explicit action.</p>
+    <ul>
+      <li>The prompt appears automatically after complex or frustrating sessions (e.g. when the AI detects difficulty or frustration in the conversation)</li>
+      <li>You must type <code>/donate</code> to actually submit anything — the prompt alone sends nothing</li>
+      <li>Donations are saved locally to <code>~/.axion/donations/</code> first so you can review them</li>
+      <li>If you've configured a webhook with <code>/donate webhook &lt;url&gt;</code>, the history is also POSTed there</li>
+      <li>Run <code>/donate optout</code> to permanently disable donation prompts</li>
     </ul>
   </div>
 

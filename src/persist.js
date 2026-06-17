@@ -105,6 +105,23 @@ export function saveDiscordAutoStart(val) {
   save(_cfg);
 }
 
+// ── Donate / dataset contribution ────────────────────────────────────────────
+
+export function getDonateOptOut()      { return _cfg.donateOptOut  || false; }
+export function saveDonateOptOut(val)  { _cfg.donateOptOut = val;  save(_cfg); }
+export function getDonateWebhook()     { return _cfg.donateWebhook || null; }
+export function saveDonateWebhook(url) { _cfg.donateWebhook = url || null; save(_cfg); }
+
+const DONATIONS_DIR = join(DIR, 'donations');
+
+export function saveDonation(history) {
+  if (!existsSync(DONATIONS_DIR)) mkdirSync(DONATIONS_DIR, { recursive: true });
+  const ts   = new Date().toISOString().replace(/[:.]/g, '-');
+  const file = join(DONATIONS_DIR, `${ts}.json`);
+  writeFileSync(file, JSON.stringify({ donatedAt: new Date().toISOString(), turns: history.length, history }, null, 2), 'utf8');
+  return file;
+}
+
 // ── Persistent memory ────────────────────────────────────────────────────────
 
 const MEMORY_FILE = join(DIR, 'memory.json');

@@ -159,6 +159,22 @@ export function MessageRow({ msg, expanded = false, thinkingExpanded = false }) 
         </Box>
       );
 
+    case 'donate-prompt':
+      return (
+        <Box marginTop={1} marginX={1} flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1} paddingY={0}>
+          <Box gap={1}>
+            <Text color="yellow" bold>⚡ Help improve Axion</Text>
+          </Box>
+          <Text color="gray">
+            {'This session looks like great training data. Type '}
+            <Text color="yellowBright" bold>/donate</Text>
+            {' to share it anonymously, or '}
+            <Text color="gray" dimColor>/donate skip</Text>
+            {' to dismiss.'}
+          </Text>
+        </Box>
+      );
+
     default:
       return null;
   }

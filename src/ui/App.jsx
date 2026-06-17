@@ -27,6 +27,7 @@ import {
   getAllowedTools, allowTool, clearAllowedTools,
   getSkills, saveSkill, deleteSkill,
   getDiscordToken, saveDiscordToken, getDiscordAutoStart, saveDiscordAutoStart,
+  getDonateOptOut, saveDonateOptOut, getDonateWebhook, saveDonateWebhook, saveDonation,
 } from '../persist.js';
 import { COMMANDS } from './Suggestions.jsx';
 import { THEMES, setTheme, themeName, accent } from './theme.js';
@@ -160,6 +161,10 @@ const HELP_TEXT = `  Commands
   /schedule remove <name>       delete a task
   /schedule enable/disable <n>  toggle a task
   /schedule results [name]      show result files
+  /donate                       share this session as training data (prompted automatically)
+  /donate skip                  dismiss donation prompt for this session
+  /donate optout [off]          permanently opt out (or re-enable)
+  /donate webhook [url|clear]   set/clear a POST endpoint for submissions
   /exit                         quit
 
   Shortcuts: Ctrl+R search history · Ctrl+P cycle mode · Ctrl+T thinking · Ctrl+O expand · \\ + Enter newline
@@ -170,6 +175,19 @@ const HELP_TEXT = `  Commands
 
   .axionrc  — drop a JSON file in your project root to set defaults:
     { "model": "claude", "mode": "bypass", "systemPrompt": "...", "thinking": true }`;
+
+function shouldSuggestDonate(history) {
+  if (!history || history.length < 6) return false;
+  const userMsgs = history
+    .filter(m => m.role === 'user')
+    .map(m => typeof m.content === 'string' ? m.content
+      : (m.content?.find?.(c => c.type === 'text')?.text || ''));
+  if (userMsgs.length < 3) return false;
+  const frustration = /\b(wtf|damn|shit|fuck|hell|ugh|omg|crap|broken|stupid|why isn.t|still not|doesn.t work|not working|keeps (failing|breaking)|what the)\b/i;
+  if (userMsgs.some(m => frustration.test(m))) return true;
+  if (userMsgs.length >= 7) return true; // long = hard problem
+  return false;
+}
 
 function shortCwd() {
   const cwd = process.cwd();
@@ -370,6 +388,7 @@ export function App({
   // Queue for Discord DMs — drained inside React's render cycle to avoid
   // calling setState from a Node EventEmitter callback (unreliable with Ink)
   const discordQueueRef     = useRef([]);
+  const donatePromptShownRef = useRef(false);
 
   const liveRef    = useRef([]);
   const addLive    = useCallback((msg) => {
@@ -399,6 +418,14 @@ export function App({
         .catch((err) => {
           setStaticMessages((p) => [...p, { type: 'info', content: `Auto-compact failed (${err.message}) — run /compact manually.` }]);
         });
+    }
+    // Suggest donating after frustrating or complex sessions
+    if (!donatePromptShownRef.current && !getDonateOptOut()) {
+      const hist = agentRef.current?.history || [];
+      if (shouldSuggestDonate(hist)) {
+        donatePromptShownRef.current = true;
+        setStaticMessages((p) => [...p, { type: 'donate-prompt' }]);
+      }
     }
   }, [model]);
 
@@ -2375,6 +2402,71 @@ triggers: <comma-separated words that should activate it, include "${skillName.t
           }
 
           pushStatic({ type: 'info', content: `Schedule commands:\n  /schedule                          list all\n  /schedule add <n> "<expr>" <prompt> add a new task\n  /schedule run <name>               run now\n  /schedule remove <name>            delete\n  /schedule enable/disable <name>    toggle\n  /schedule results [name]           show result files\n\nSchedule formats:\n  every 30m · every 2h · daily 09:00 · weekly mon 09:00` });
+          return true;
+        }
+
+        case 'donate': {
+          const sub = args[0]?.toLowerCase();
+
+          if (sub === 'skip') {
+            donatePromptShownRef.current = true;
+            pushStatic({ type: 'info', content: 'Donation prompt dismissed for this session.' });
+            return true;
+          }
+
+          if (sub === 'optout') {
+            if (args[1] === 'off') {
+              saveDonateOptOut(false);
+              pushStatic({ type: 'info', content: '✔ Donation prompts re-enabled.' });
+            } else {
+              saveDonateOptOut(true);
+              donatePromptShownRef.current = true;
+              pushStatic({ type: 'info', content: '✔ Opted out of donation prompts. Run /donate optout off to re-enable.' });
+            }
+            return true;
+          }
+
+          if (sub === 'webhook') {
+            const url = args.slice(1).join(' ').trim();
+            if (!url) {
+              const current = getDonateWebhook();
+              pushStatic({ type: 'info', content: current ? `Webhook: ${current}\n\nRun /donate webhook clear to remove.` : 'No webhook set.\n\nUsage: /donate webhook <url>\n       /donate webhook clear' });
+              return true;
+            }
+            if (url === 'clear') {
+              saveDonateWebhook(null);
+              pushStatic({ type: 'info', content: '✔ Webhook cleared. Donations save locally only.' });
+              return true;
+            }
+            saveDonateWebhook(url);
+            pushStatic({ type: 'info', content: `✔ Webhook saved: ${url}` });
+            return true;
+          }
+
+          // Submit
+          const hist = agentRef.current?.history;
+          if (!hist || hist.length === 0) {
+            pushStatic({ type: 'info', content: 'Nothing to donate — conversation is empty.' });
+            return true;
+          }
+          const donationFile = saveDonation(hist);
+          const shortPath = donationFile.replace(homedir(), '~');
+          pushStatic({ type: 'info', content: `✔ Saved to ${shortPath}` });
+          donatePromptShownRef.current = true;
+          const webhook = getDonateWebhook();
+          if (webhook) {
+            fetch(webhook, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ donatedAt: new Date().toISOString(), turns: hist.length, history: hist }),
+            }).then(r => {
+              pushStatic({ type: 'info', content: r.ok ? '✔ Submitted to webhook.' : `⚠ Webhook returned ${r.status}.` });
+            }).catch(e => {
+              pushStatic({ type: 'info', content: `⚠ Webhook failed: ${e.message}` });
+            });
+          } else {
+            pushStatic({ type: 'info', content: 'Tip: run /donate webhook <url> to also POST to a receiver.' });
+          }
           return true;
         }
 
