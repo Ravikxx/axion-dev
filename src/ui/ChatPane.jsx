@@ -167,9 +167,9 @@ export function MessageRow({ msg, expanded = false, thinkingExpanded = false }) 
           </Box>
           <Text color="gray">
             {'This session looks like great training data. Type '}
-            <Text color="yellowBright" bold>/donate</Text>
+            <Text color="yellowBright" bold>/contribute</Text>
             {' to share it anonymously, or '}
-            <Text color="gray" dimColor>/donate skip</Text>
+            <Text color="gray" dimColor>/contribute skip</Text>
             {' to dismiss.'}
           </Text>
         </Box>

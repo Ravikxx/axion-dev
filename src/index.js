@@ -105,11 +105,19 @@ try {
   }
 } catch {}
 
-// Read .axionrc from cwd — per-project config overrides
+// Read .axionrc and/or .axion-settings.json from cwd — per-project config overrides.
+// .axion-settings.json takes priority over .axionrc when both exist.
 let axionrc = {};
 try {
   const rcPath = resolve(process.cwd(), '.axionrc');
   if (existsSync(rcPath)) axionrc = JSON.parse(readFileSync(rcPath, 'utf8'));
+} catch {}
+try {
+  const settingsPath = resolve(process.cwd(), '.axion-settings.json');
+  if (existsSync(settingsPath)) {
+    const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
+    axionrc = { ...axionrc, ...settings };
+  }
 } catch {}
 
 const modelArg = argv.model || axionrc.model || savedModel || DEFAULT_MODEL;
@@ -167,6 +175,11 @@ if (linked) {
     initialMode:  modeArg,
   });
 } else {
+  // Apply per-project theme before launch
+  if (axionrc.theme) {
+    const { setTheme } = await import('./ui/theme.js');
+    setTheme(axionrc.theme);
+  }
   component = React.createElement(App, {
     initialModel:          modelArg,
     initialMode:           modeArg,

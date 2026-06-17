@@ -7,7 +7,8 @@
     "axion": "./dist/axion.js",
     "axion-serve": "./src/web/server.js",
     "axion-blender": "./mcp-servers/blender/index.js",
-    "axion-discord": "./src/discord-daemon.js"
+    "axion-discord": "./src/discord-daemon.js",
+    "axion-collect": "./src/collect-daemon.js"
   },
   "scripts": {
     "build": "node build.js",

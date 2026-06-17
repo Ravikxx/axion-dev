@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Box, Text, Static, useApp } from 'ink';
 import { execSync, spawn } from 'child_process';
-import { existsSync, readFileSync, unlinkSync, statSync } from 'fs';
+import { existsSync, readFileSync, unlinkSync, statSync, readdirSync } from 'fs';
 import { join, resolve } from 'path';
 import Spinner from 'ink-spinner';
 import { MessageRow } from './ChatPane.jsx';
@@ -161,10 +161,10 @@ const HELP_TEXT = `  Commands
   /schedule remove <name>       delete a task
   /schedule enable/disable <n>  toggle a task
   /schedule results [name]      show result files
-  /donate                       share this session as training data (prompted automatically)
-  /donate skip                  dismiss donation prompt for this session
-  /donate optout [off]          permanently opt out (or re-enable)
-  /donate webhook [url|clear]   set/clear a POST endpoint for submissions
+  /contribute                   share this session as training data (prompted automatically)
+  /contribute skip              dismiss contribution prompt for this session
+  /contribute optout [off]      permanently opt out (or re-enable)
+  /contribute webhook [url|clear] set/clear a POST endpoint for submissions
   /exit                         quit
 
   Shortcuts: Ctrl+R search history · Ctrl+P cycle mode · Ctrl+T thinking · Ctrl+O expand · \\ + Enter newline
@@ -173,8 +173,9 @@ const HELP_TEXT = `  Commands
 
   Ollama: /model ollama  (ollama must be running at localhost:11434)
 
-  .axionrc  — drop a JSON file in your project root to set defaults:
-    { "model": "claude", "mode": "bypass", "systemPrompt": "...", "thinking": true }`;
+  .axionrc / .axion-settings.json  — per-project config (drop in project root):
+    { "model": "claude", "mode": "bypass", "systemPrompt": "...", "thinking": true, "theme": "ocean" }
+    .axion-settings.json takes priority over .axionrc when both exist.`;
 
 function shouldSuggestDonate(history) {
   if (!history || history.length < 6) return false;
@@ -525,6 +526,28 @@ export function App({
     // Seed image model from saved config
     const savedImg = getSavedImageModel();
     if (savedImg) IMAGE_GEN_MODEL.current = savedImg;
+    // Drain locally-saved contributions to axion-collect daemon if it's running
+    (async () => {
+      try {
+        const statusRes = await fetch('http://127.0.0.1:47832/status', { signal: AbortSignal.timeout(600) });
+        if (!statusRes.ok) return;
+        const pendingDir = join(homedir(), '.axion', 'donations');
+        if (!existsSync(pendingDir)) return;
+        const files = readdirSync(pendingDir).filter(f => f.endsWith('.json'));
+        for (const f of files) {
+          try {
+            const fp = join(pendingDir, f);
+            const data = JSON.parse(readFileSync(fp, 'utf8'));
+            const r = await fetch('http://127.0.0.1:47832/collect', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(data),
+            });
+            if (r.ok) unlinkSync(fp);
+          } catch {}
+        }
+      } catch {}
+    })();
   }, []);
 
   useEffect(() => {
@@ -2405,23 +2428,23 @@ triggers: <comma-separated words that should activate it, include "${skillName.t
           return true;
         }
 
-        case 'donate': {
+        case 'contribute': {
           const sub = args[0]?.toLowerCase();
 
           if (sub === 'skip') {
             donatePromptShownRef.current = true;
-            pushStatic({ type: 'info', content: 'Donation prompt dismissed for this session.' });
+            pushStatic({ type: 'info', content: 'Contribution prompt dismissed for this session.' });
             return true;
           }
 
           if (sub === 'optout') {
             if (args[1] === 'off') {
               saveDonateOptOut(false);
-              pushStatic({ type: 'info', content: '✔ Donation prompts re-enabled.' });
+              pushStatic({ type: 'info', content: '✔ Contribution prompts re-enabled.' });
             } else {
               saveDonateOptOut(true);
               donatePromptShownRef.current = true;
-              pushStatic({ type: 'info', content: '✔ Opted out of donation prompts. Run /donate optout off to re-enable.' });
+              pushStatic({ type: 'info', content: '✔ Opted out. Run /contribute optout off to re-enable.' });
             }
             return true;
           }
@@ -2430,12 +2453,12 @@ triggers: <comma-separated words that should activate it, include "${skillName.t
             const url = args.slice(1).join(' ').trim();
             if (!url) {
               const current = getDonateWebhook();
-              pushStatic({ type: 'info', content: current ? `Webhook: ${current}\n\nRun /donate webhook clear to remove.` : 'No webhook set.\n\nUsage: /donate webhook <url>\n       /donate webhook clear' });
+              pushStatic({ type: 'info', content: current ? `Webhook: ${current}\n\nRun /contribute webhook clear to remove.` : 'No webhook set.\n\nUsage: /contribute webhook <url>\n       /contribute webhook clear' });
               return true;
             }
             if (url === 'clear') {
               saveDonateWebhook(null);
-              pushStatic({ type: 'info', content: '✔ Webhook cleared. Donations save locally only.' });
+              pushStatic({ type: 'info', content: '✔ Webhook cleared.' });
               return true;
             }
             saveDonateWebhook(url);
@@ -2446,26 +2469,41 @@ triggers: <comma-separated words that should activate it, include "${skillName.t
           // Submit
           const hist = agentRef.current?.history;
           if (!hist || hist.length === 0) {
-            pushStatic({ type: 'info', content: 'Nothing to donate — conversation is empty.' });
+            pushStatic({ type: 'info', content: 'Nothing to contribute — conversation is empty.' });
             return true;
           }
-          const donationFile = saveDonation(hist);
-          const shortPath = donationFile.replace(homedir(), '~');
-          pushStatic({ type: 'info', content: `✔ Saved to ${shortPath}` });
           donatePromptShownRef.current = true;
+          const payload = { donatedAt: new Date().toISOString(), turns: hist.length, history: hist };
+          // Try axion-collect daemon first (auto-drains saved files too)
+          fetch('http://127.0.0.1:47832/collect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(2000),
+          }).then(r => {
+            if (r.ok) {
+              pushStatic({ type: 'info', content: '✔ Sent to axion-collect.' });
+            } else {
+              const f = saveDonation(hist);
+              pushStatic({ type: 'info', content: `✔ Saved locally → ${f.replace(homedir(), '~')}\n   (axion-collect returned ${r.status})` });
+            }
+          }).catch(() => {
+            // Daemon not running — save locally
+            const f = saveDonation(hist);
+            pushStatic({ type: 'info', content: `✔ Saved locally → ${f.replace(homedir(), '~')}\n   Start axion-collect to auto-sync next time.` });
+          });
+          // Also POST to configured webhook if set
           const webhook = getDonateWebhook();
           if (webhook) {
             fetch(webhook, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ donatedAt: new Date().toISOString(), turns: hist.length, history: hist }),
+              body: JSON.stringify(payload),
             }).then(r => {
-              pushStatic({ type: 'info', content: r.ok ? '✔ Submitted to webhook.' : `⚠ Webhook returned ${r.status}.` });
+              pushStatic({ type: 'info', content: r.ok ? '✔ Also sent to webhook.' : `⚠ Webhook returned ${r.status}.` });
             }).catch(e => {
               pushStatic({ type: 'info', content: `⚠ Webhook failed: ${e.message}` });
             });
-          } else {
-            pushStatic({ type: 'info', content: 'Tip: run /donate webhook <url> to also POST to a receiver.' });
           }
           return true;
         }
