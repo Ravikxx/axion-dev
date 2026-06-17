@@ -156,47 +156,131 @@ Switch with `/mode auto` or press `Ctrl+P` to cycle.
 ## CLI Commands
 
 ```
-/help                         show all commands
-/model <name>                 switch model
-/mode <name>                  switch mode: ask · plan · auto
-/theme [name]                 accent color: ember · violet · ocean · jade · rose · gold
-/api <model> <key>            set API key
-/endpoint <name> <url> [model] [key]   add custom endpoint
-/thinking [on|off|tokens]     enable extended thinking
-/web [port]                   open web UI in browser
-/web stop                     stop web server
+/help                              show all commands
+/model <name|id>                   switch model (alias or raw ID)
+/mode  <name>                      switch mode: ask · plan · auto  (Ctrl+P to cycle)
+/models                            list all available models + custom endpoints
+/theme [name]                      accent color: ember · violet · ocean · jade · rose · gold
+/api <model> <key>                 set API key (saved)
+/endpoint <name> <url> [model] [key]  add a custom OpenAI-compatible endpoint
+/endpoint                          list saved endpoints
+/thinking [on|off|<tokens>]        toggle extended thinking
+/adviser [model|auto|off]          set a second model that helps when the agent gets stuck
+/cost                              show session token usage and estimated cost
 
-/oauth connect <service>      connect GitHub · Google · Notion · Slack
-/oauth list                   show connected services
-/oauth revoke <service>       disconnect
+# Running things
+/run <cmd>                         run a shell command and feed output to the agent
+!<cmd>                             shorthand for /run  e.g. !git status
+/goal <description>                work autonomously until goal is met
+/goal                              show or cancel current goal
+/retry                             re-run the last message
+/btw <question>                    quick side question without affecting chat history
+/review                            code review of current git diff (structured feedback)
+/pr [context]                      draft a PR title+body from recent commits
 
-/schedule add <name> "<expr>" <prompt>   add scheduled task
-/schedule list                list all tasks
-/schedule run <name>          run a task now
-/schedule results [name]      show result files
+# Context & memory
+/remember <text>                   save a persistent note (injected into every session)
+/remember                          list saved notes
+/forget <index>                    remove a note by number
+/system [text]                     set/clear extra system prompt instructions for this session
+/include <file>                    pin a file into context for the session (tab-completes)
+/include                           list pinned files
+/include remove <file>             unpin a file
+/include clear                     unpin all files
 
-/mcp                          show connected MCP servers
-/mcp add <name> <cmd> [args]  connect an MCP server
-/mcp tools [name]             list available tools
+# Chat history
+/save <name>                       save current chat
+/resume [name]                     resume a saved chat (no name = list all)
+/remove-chat <name>                delete a saved chat
+/search-chats <query>             search across all saved chats
+/history <query>                   search message history
+/export <filename>                 save chat as markdown
+/compact                           summarize & compress history to free context
+/clear                             clear history
 
-/remember <text>              save a persistent note
-/forget <index>               remove a note
-/goal <description>           run autonomously until goal is met
-/save <name>                  save current chat
-/resume <name>                resume a saved chat
-/export <filename>            export chat as markdown
-/undo                         restore last overwritten file
-/rewind [list|<n>]            undo the last n turns' file changes
-/permissions [clear]          list/reset always-allowed tools ("a" on confirms)
-/skills                       list skills (auto-activate on trigger words)
-/skill-generator <name> <txt> AI-generates a skill .md in ~/.axion/skills/
-/skill-delete <name>          delete a skill
-/contribute                   share this session as training data
-/contribute skip              dismiss for this session
-/contribute optout [off]      permanently opt out (or re-enable)
-/clear                        clear history
-/exit                         quit
+# Comparing models
+/compare <prompt>                  run prompt through saved/default models side by side
+/compare <m1,m2,...> <prompt>      override models for this run
+/compare-models                    show saved compare model list
+/compare-models <m1,m2,...>        save default models for /compare
+/compare-models reset              restore built-in defaults (claude · gpt · gemini)
+
+# Undo & checkpoints
+/undo                              restore last overwritten/deleted file
+/rewind [list|<n>]                 undo the last n turns' file changes (checkpoints)
+
+# Computer use
+/computer [on|off]                 toggle computer use / screen control  (alias: /cu)
+/vision [model]                    set/show vision model for computer use
+/ss [question]                     screenshot + describe the screen (quick, no agent loop)
+/macro record <name>               start recording a macro (computer use actions)
+/macro stop                        save the recorded macro
+/macro play <name>                 replay a saved macro
+/macro list                        list all saved macros
+/macro delete <name>               delete a saved macro
+
+# Image generation
+/img-gen <prompt>                  generate an image (saved to ~/.axion/images/)
+/img-gen-model [model]             set/show image model (dall-e-3, dall-e-2, gpt-image-1)
+
+# Skills & automation
+/skills                            list skills (auto-activate when trigger words appear)
+/skill-generator <name> <txt>      AI-generates a skill .md in ~/.axion/skills/
+/skill-delete <name>               delete a skill
+/watch                             start watch-and-learn (saves preferences from your messages)
+/watch stop                        stop + save learned preferences to ~/.axion/learned.md
+/watch show                        view current learned preferences
+/watch clear                       delete all learned preferences
+/permissions [clear]               list/reset always-allowed tools (press "a" on confirms)
+
+# Dataset contribution
+/contribute                        share this session as training data (auto-prompted)
+/contribute skip                   dismiss for this session
+/contribute optout [off]           permanently opt out (or re-enable)
+
+# Web UI
+/web [port]                        open web UI in browser (default port 3000)
+/web stop                          stop web server
+
+# MCP servers
+/mcp                               show connected MCP servers + tool counts
+/mcp browse                        browse MCP marketplace (curated servers)
+/mcp search <query>                search marketplace by keyword
+/mcp install <id>                  install a server from the marketplace
+/mcp add <name> <cmd> [args]       connect a custom MCP server (saved)
+/mcp enable <name>                 enable a disabled server
+/mcp disable <name>                pause a server (keeps config)
+/mcp remove <name>                 disconnect + delete config
+/mcp tools [name]                  list tools from connected servers
+/mcp reload                        restart all servers
+
+# Blender
+/blender setup                     show Blender add-on install instructions
+/blender connect                   connect Blender MCP server to Axion
+
+# OAuth
+/oauth connect <service>           connect GitHub · Google · Notion · Slack
+/oauth list                        show connected services
+/oauth revoke <service>            disconnect
+
+# Scheduled tasks
+/schedule                          list scheduled tasks
+/schedule add <name> "<expr>" <p>  add a scheduled task
+/schedule run <name>               run a task now
+/schedule remove <name>            delete a task
+/schedule enable/disable <name>    toggle a task
+/schedule results [name]           show result files
+
+# Discord
+/discord token <TOKEN>             save bot token
+/discord start                     connect bot (auto-reconnects on next launch)
+/discord stop                      disconnect
+/discord status                    show connection info
+
+/exit                              quit
 ```
+
+**Keyboard shortcuts:** `Ctrl+R` search history · `Ctrl+P` cycle mode · `Ctrl+T` toggle thinking · `Ctrl+O` expand tool output · `\` + `Enter` newline
 
 ---
 
