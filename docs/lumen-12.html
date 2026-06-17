@@ -221,18 +221,39 @@
     }
     footer a { color: #8b7355; text-decoration: none; }
     footer a:hover { color: #c9b99a; }
+
+    .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+    @media (max-width: 640px) {
+      nav { padding: 0 16px; gap: 10px; }
+      nav a:not(.brand) { display: none; }
+
+      .update-bar { padding: 10px 16px; flex-wrap: wrap; }
+      .update-bar .update-link { margin-left: 0; }
+
+      .hero { padding: 48px 20px 40px; }
+      .stat-row { gap: 24px; margin-top: 32px; padding-top: 32px; }
+      .stat-num { font-size: 32px; }
+
+      main { padding: 40px 16px 40px; }
+
+      .chart-grid { grid-template-columns: 1fr; }
+
+      .benchmark-table { font-size: 13px; }
+      .benchmark-table th, .benchmark-table td { padding: 10px 12px; }
+    }
   </style>
 </head>
 <body>
 
-<div style="background:#1a1209;border-bottom:1px solid rgba(232,96,44,0.3);padding:12px 32px;display:flex;align-items:center;gap:12px;font-size:13px;">
-  <span style="background:#2d7a3a;color:#fff;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;padding:3px 7px;border-radius:4px;white-space:nowrap;">Updated</span>
-  <span style="color:#c9b99a;"><strong style="color:#f4efe6;">Lumen 1.2.1 is live</strong> — catastrophic forgetting fixed (GSM8K 5%→12%), coding adjusted (HumanEval 80%→50%). Use 1.2 for coding, 1.2.1 for general use. <strong style="color:#f4efe6;">Lumen 1.3</strong> in development.</span>
-  <a href="/announcements" style="color:#e8602c;text-decoration:none;font-weight:600;white-space:nowrap;margin-left:auto;">See announcements →</a>
+<div class="update-bar" style="background:#1a1209;border-bottom:1px solid rgba(232,96,44,0.3);padding:12px 32px;display:flex;align-items:center;gap:12px;font-size:13px;flex-wrap:wrap;">
+  <span style="background:#2d7a3a;color:#fff;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;padding:3px 7px;border-radius:4px;flex-shrink:0;">Updated</span>
+  <span style="color:#c9b99a;flex:1;min-width:0;"><strong style="color:#f4efe6;">Lumen 1.2.1 is live</strong> — catastrophic forgetting fixed (GSM8K 5%→12%), coding adjusted (HumanEval 80%→50%). Use 1.2 for coding, 1.2.1 for general use. <strong style="color:#f4efe6;">Lumen 1.3</strong> in development.</span>
+  <a href="/announcements" class="update-link" style="color:#e8602c;text-decoration:none;font-weight:600;flex-shrink:0;">See announcements →</a>
 </div>
 
 <nav>
-  <a href="/" class="brand">◈ Axion</a>
+  <a href="/" class="brand">⚛ Axion</a>
   <a href="/announcements">Announcements</a>
   <a href="https://github.com/Ravikxx/axion">GitHub</a>
 </nav>
@@ -375,7 +396,7 @@
     <div class="card-title">Full Benchmark Table</div>
     <div class="card-sub">All scores, improvement deltas</div>
     <br>
-    <table class="benchmark-table">
+    <div class="table-scroll"><table class="benchmark-table">
       <thead>
         <tr>
           <th>Benchmark</th>
@@ -416,7 +437,7 @@
           <td><span class="delta-badge">+76.8pts</span></td>
         </tr>
       </tbody>
-    </table>
+    </table></div>
   </div>
 
   <div class="callout">

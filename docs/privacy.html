@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy — Axion Labs</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f4efe6;
+      --bg-card: #faf7f2;
+      --border: #e0d8cc;
+      --text: #1a1209;
+      --text-muted: #6b5e4e;
+      --accent: #e8602c;
+      --accent-light: #fdf0ea;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    nav {
+      background: #1a1209;
+      padding: 0 32px;
+      display: flex;
+      align-items: center;
+      height: 56px;
+      gap: 24px;
+    }
+    nav a { color: #c9b99a; text-decoration: none; font-size: 14px; transition: color 0.2s; }
+    nav a:hover { color: #f4efe6; }
+    nav a.brand { color: #f4efe6; font-weight: 600; font-size: 16px; margin-right: 16px; }
+
+    .page-header {
+      background: #1a1209;
+      color: #f4efe6;
+      padding: 56px 32px 48px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .page-header .section-tag {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 12px;
+    }
+    .page-header h1 {
+      font-size: 40px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 10px;
+    }
+    .page-header p { color: #8b7355; font-size: 16px; }
+
+    main {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 56px 32px 80px;
+    }
+
+    .policy-section {
+      margin-bottom: 48px;
+    }
+
+    .policy-section h2 {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      margin-bottom: 16px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .policy-section p {
+      font-size: 15px;
+      color: var(--text-muted);
+      line-height: 1.7;
+      margin-bottom: 12px;
+    }
+
+    .policy-section ul {
+      list-style: none;
+      margin: 12px 0;
+    }
+
+    .policy-section ul li {
+      font-size: 15px;
+      color: var(--text-muted);
+      line-height: 1.65;
+      padding: 8px 0 8px 20px;
+      border-bottom: 1px solid var(--border);
+      position: relative;
+    }
+    .policy-section ul li:last-child { border-bottom: none; }
+    .policy-section ul li::before {
+      content: '—';
+      position: absolute;
+      left: 0;
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .policy-section ul li strong { color: var(--text); }
+
+    .callout {
+      background: var(--accent-light);
+      border: 1px solid rgba(232,96,44,0.2);
+      border-left: 4px solid var(--accent);
+      border-radius: 10px;
+      padding: 18px 22px;
+      margin: 20px 0;
+      font-size: 15px;
+      color: var(--text-muted);
+      line-height: 1.65;
+    }
+
+    .callout strong { color: var(--text); }
+
+    .policy-section a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    .policy-section a:hover { text-decoration: underline; }
+
+    code {
+      font-family: "SF Mono", ui-monospace, "Cascadia Code", Menlo, monospace;
+      font-size: 13px;
+      background: rgba(0,0,0,0.06);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: var(--text);
+    }
+
+    .last-updated {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 48px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    footer {
+      background: #1a1209;
+      color: #6b5e4e;
+      text-align: center;
+      padding: 32px;
+      font-size: 13px;
+    }
+    footer a { color: #8b7355; text-decoration: none; }
+    footer a:hover { color: #c9b99a; }
+
+    @media (max-width: 640px) {
+      nav { padding: 0 16px; gap: 10px; }
+      nav a:not(.brand) { display: none; }
+
+      .page-header { padding: 36px 20px 28px; }
+      .page-header h1 { font-size: 30px; }
+
+      main { padding: 28px 16px 56px; }
+
+      .policy-section { margin-bottom: 36px; }
+      .policy-section h2 { font-size: 18px; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="brand">⚛ Axion</a>
+  <a href="/announcements">Announcements</a>
+  <a href="/lumen-12">Lumen 1.2</a>
+  <a href="https://github.com/Ravikxx/axion">GitHub</a>
+</nav>
+
+<div class="page-header">
+  <div class="section-tag">Axion Labs</div>
+  <h1>Privacy Policy</h1>
+  <p>How Axion handles your data when using OAuth integrations.</p>
+</div>
+
+<main>
+
+  <p class="last-updated">Last updated: June 6, 2026</p>
+
+  <div class="callout">
+    <strong>Short version:</strong> Axion is a local application. Your data never leaves your machine except to talk directly to the services you connect (Google, GitHub) or the AI provider you configure. Nothing goes to Axion Labs servers.
+  </div>
+
+  <div class="policy-section">
+    <h2>Overview</h2>
+    <p>Axion is an open-source AI coding agent. This privacy policy explains how Axion handles data when you use OAuth integrations (GitHub, Google).</p>
+  </div>
+
+  <div class="policy-section">
+    <h2>What data Axion accesses</h2>
+    <p>When you connect Google via <code>/oauth connect google</code>, Axion may access:</p>
+    <ul>
+      <li><strong>Google Drive</strong> — to list, read, and search your files when you ask it to</li>
+      <li><strong>Google Calendar</strong> — to read and create calendar events when you ask it to</li>
+      <li><strong>Gmail</strong> — to read and send emails when you ask it to</li>
+    </ul>
+    <p style="margin-top:16px">When you connect GitHub via <code>/oauth connect github</code>, Axion may access:</p>
+    <ul>
+      <li>Your repositories, issues, and pull requests when you ask it to</li>
+    </ul>
+  </div>
+
+  <div class="policy-section">
+    <h2>How data is used</h2>
+    <ul>
+      <li>All data accessed through OAuth is used <strong>only to respond to your requests</strong> within the Axion chat interface</li>
+      <li>Axion does <strong>not</strong> store, log, or transmit your Google or GitHub data to any third party</li>
+      <li>OAuth tokens are stored <strong>locally on your machine</strong> in <code>~/.axion/oauth.json</code> and never sent anywhere except the respective service's API</li>
+    </ul>
+  </div>
+
+  <div class="policy-section">
+    <h2>Data storage</h2>
+    <ul>
+      <li>OAuth tokens are stored locally on your device only</li>
+      <li>No data is sent to Axion Labs servers</li>
+      <li>Axion is a local application — all processing happens on your machine or through the AI provider you configure (Anthropic, OpenAI, etc.)</li>
+    </ul>
+  </div>
+
+  <div class="policy-section">
+    <h2>Third-party services</h2>
+    <p>Axion connects to AI providers (Anthropic, OpenAI, Google Gemini, etc.) using API keys you supply. Please refer to each provider's privacy policy for how they handle your data.</p>
+  </div>
+
+  <div class="policy-section">
+    <h2>Your control</h2>
+    <ul>
+      <li>You can disconnect any service at any time with <code>/oauth revoke &lt;service&gt;</code></li>
+      <li>You can delete your local token file at <code>~/.axion/oauth.json</code></li>
+      <li>Axion is open source — you can audit exactly what it does at <a href="https://github.com/Ravikxx/axion">github.com/Ravikxx/axion</a></li>
+    </ul>
+  </div>
+
+  <div class="policy-section">
+    <h2>Contact</h2>
+    <p>For questions, open an issue at <a href="https://github.com/Ravikxx/axion/issues">github.com/Ravikxx/axion/issues</a> or visit <a href="https://axion.amplifiedsmp.org">axion.amplifiedsmp.org</a>.</p>
+  </div>
+
+</main>
+
+<footer>
+  <p>© 2026 Axion Labs · <a href="/">Home</a> · <a href="/privacy">Privacy</a> · <a href="https://github.com/Ravikxx/axion">GitHub</a></p>
+</footer>
+
+</body>
+</html>

@@ -65,10 +65,11 @@ export async function startDiscord(token, onMessage) {
   });
 
   client.on(Events.MessageCreate, async (msg) => {
+    console.log('[discord] messageCreate from', msg.author?.tag, 'guild:', !!msg.guild);
     if (msg.author.bot) return;
     if (!_onMessage) return;
     if (msg.guild) {
-      // In servers: only respond when directly mentioned
+      console.log('[discord] guild msg from', msg.author.tag, '| mentions bot:', msg.mentions.has(client.user), '| content:', msg.content?.slice(0, 80));
       if (!msg.mentions.has(client.user)) return;
     }
     if (isRateLimited(msg.author.id)) return;

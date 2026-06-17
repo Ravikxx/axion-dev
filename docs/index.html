@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Axion — Open-Source AI Coding Agent</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:         #f4efe6;
+      --bg-card:    #faf7f2;
+      --border:     #e0d8cc;
+      --text:       #1a1209;
+      --text-muted: #6b5e4e;
+      --accent:     #e8602c;
+      --accent-lt:  #fdf0ea;
+      --dark:       #1a1209;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    /* ── Nav ─────────────────────────────────────────────────────────────── */
+    nav {
+      background: var(--dark);
+      padding: 0 32px;
+      display: flex;
+      align-items: center;
+      height: 56px;
+      gap: 24px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    nav .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #f4efe6;
+      font-weight: 700;
+      font-size: 16px;
+      text-decoration: none;
+      margin-right: 16px;
+    }
+    nav .brand img { width: 26px; height: 26px; border-radius: 6px; }
+    nav a { color: #c9b99a; text-decoration: none; font-size: 14px; transition: color 0.2s; }
+    nav a:hover { color: #f4efe6; }
+    nav .nav-right { margin-left: auto; display: flex; gap: 20px; align-items: center; }
+    nav .nav-right .btn-nav {
+      background: var(--accent);
+      color: #fff;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: opacity 0.2s;
+    }
+    nav .nav-right .btn-nav:hover { opacity: 0.88; }
+
+    /* ── Hero ────────────────────────────────────────────────────────────── */
+    .hero {
+      background: linear-gradient(160deg, #1a1209 0%, #2d1f0e 55%, #3d2810 100%);
+      color: #f4efe6;
+      padding: 96px 32px 88px;
+      text-align: center;
+    }
+    .hero-logo {
+      width: 100px;
+      height: 100px;
+      border-radius: 22px;
+      margin-bottom: 32px;
+      display: block;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .hero-eyebrow {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 16px;
+    }
+    .hero h1 {
+      font-size: clamp(40px, 7vw, 72px);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.05;
+      margin-bottom: 20px;
+    }
+    .hero h1 span { color: var(--accent); }
+    .hero-sub {
+      font-size: 18px;
+      color: #c9b99a;
+      max-width: 520px;
+      margin: 0 auto 40px;
+      line-height: 1.6;
+    }
+    .hero-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: opacity 0.2s, transform 0.15s;
+    }
+    .btn:hover { opacity: 0.88; transform: translateY(-1px); }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-ghost {
+      background: rgba(255,255,255,0.08);
+      color: #f4efe6;
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+
+    /* ── News banner ─────────────────────────────────────────────────────── */
+    .news-wrap { max-width: 760px; margin: 0 auto; padding: 0 32px; transform: translateY(-24px); }
+    .news-banner {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 20px;
+      text-decoration: none;
+      box-shadow: 0 2px 12px rgba(26,18,9,0.08);
+      transition: box-shadow 0.2s, transform 0.15s;
+    }
+    .news-banner:hover { box-shadow: 0 4px 20px rgba(26,18,9,0.12); transform: translateY(-1px); }
+    .news-tag {
+      background: var(--accent);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+    .news-text { font-size: 14px; color: var(--text); flex: 1; }
+    .news-text strong { color: var(--accent); }
+    .news-arrow { color: var(--text-muted); font-size: 16px; }
+
+    /* ── Main sections ───────────────────────────────────────────────────── */
+    main { max-width: 960px; margin: 0 auto; padding: 24px 32px 80px; }
+
+    .section-tag {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 10px;
+    }
+    .section-heading {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      margin-bottom: 8px;
+    }
+    .section-lead {
+      color: var(--text-muted);
+      font-size: 15px;
+      margin-bottom: 40px;
+    }
+
+    section { margin-bottom: 72px; }
+
+    /* ── Feature grid ────────────────────────────────────────────────────── */
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+    @media (max-width: 720px) { .feature-grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 480px) { .feature-grid { grid-template-columns: 1fr; } }
+
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .feature-card:hover {
+      border-color: #c9b99a;
+      box-shadow: 0 2px 12px rgba(26,18,9,0.06);
+    }
+    .feature-icon {
+      font-size: 22px;
+      margin-bottom: 14px;
+      display: block;
+    }
+    .feature-title {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .feature-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* ── Ecosystem strip ─────────────────────────────────────────────────── */
+    .ecosystem {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 600px) { .ecosystem { grid-template-columns: 1fr; } }
+
+    .eco-card {
+      background: var(--dark);
+      border-radius: 12px;
+      padding: 28px;
+      color: #f4efe6;
+      position: relative;
+      overflow: hidden;
+    }
+    .eco-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(232,96,44,0.15) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    .eco-tag {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 10px;
+    }
+    .eco-name {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 8px;
+    }
+    .eco-desc {
+      font-size: 13px;
+      color: #8b7355;
+      line-height: 1.5;
+      margin-bottom: 16px;
+    }
+    .eco-link {
+      font-size: 13px;
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .eco-link:hover { text-decoration: underline; }
+
+    /* ── Quick-start ─────────────────────────────────────────────────────── */
+    .code-block {
+      background: #0f0c07;
+      border: 1px solid #2d2010;
+      border-radius: 10px;
+      padding: 20px 24px;
+      font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+      font-size: 13px;
+      color: #c9b99a;
+      overflow-x: auto;
+      line-height: 1.8;
+    }
+    .code-block .prompt { color: #e8602c; user-select: none; }
+    .code-block .comment { color: #5a4a38; }
+
+    /* ── Links section ───────────────────────────────────────────────────── */
+    .link-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .link-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text);
+      text-decoration: none;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .link-chip:hover { border-color: var(--accent); background: var(--accent-lt); }
+
+    /* ── Footer ──────────────────────────────────────────────────────────── */
+    footer {
+      background: var(--dark);
+      color: #8b7355;
+      text-align: center;
+      padding: 28px 32px;
+      font-size: 13px;
+    }
+    footer a { color: var(--accent); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+
+    /* ── Mobile ───────────────────────────────────────────────────────────── */
+    @media (max-width: 640px) {
+      nav { padding: 0 16px; gap: 10px; }
+      nav a:not(.brand):not(.btn-nav) { display: none; }
+      nav .nav-right { gap: 12px; }
+
+      .hero { padding: 56px 20px 48px; }
+      .hero-logo { width: 76px; height: 76px; border-radius: 16px; }
+      .hero-sub { font-size: 16px; }
+      .btn { padding: 11px 18px; font-size: 14px; }
+
+      .news-wrap { padding: 0 16px; }
+      .news-banner { gap: 8px; }
+
+      main { padding: 16px 16px 56px; }
+
+      .feature-grid { grid-template-columns: 1fr; }
+      .ecosystem { grid-template-columns: 1fr; }
+
+      .code-block { padding: 14px 16px; font-size: 12px; overflow-x: auto; }
+
+      section { margin-bottom: 48px; }
+
+      .link-row { gap: 8px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Nav ──────────────────────────────────────────────────────────────── -->
+<nav>
+  <a href="/" class="brand">
+    <img src="logo.png" alt="Axion logo">
+    Axion
+  </a>
+  <a href="/announcements">Announcements</a>
+  <a href="/lumen-12">Lumen 1.2</a>
+  <div class="nav-right">
+    <a href="https://github.com/Ravikxx/axion">GitHub</a>
+    <a href="https://github.com/Ravikxx/axion" class="btn-nav">Get Started →</a>
+  </div>
+</nav>
+
+<!-- ── Hero ─────────────────────────────────────────────────────────────── -->
+<section class="hero">
+  <img class="hero-logo" src="logo.png" alt="Axion logo">
+  <p class="hero-eyebrow">Open Source · Axion Labs</p>
+  <h1>The AI coding agent<br><span>built to be extended</span></h1>
+  <p class="hero-sub">
+    A terminal-native AI agent with computer use, a Chrome extension, Discord integration, and a growing ecosystem of tools — all open source.
+  </p>
+  <div class="hero-actions">
+    <a class="btn btn-primary" href="https://github.com/Ravikxx/axion">⬇ Clone on GitHub</a>
+    <a class="btn btn-ghost" href="/lumen-12">Lumen 1.2 Release →</a>
+  </div>
+</section>
+
+<!-- ── News banner ───────────────────────────────────────────────────────── -->
+<div class="news-wrap">
+  <a class="news-banner" href="/lumen-12">
+    <span class="news-tag">New</span>
+    <span class="news-text"><strong>Lumen 1.2 is here</strong> — our most capable model yet, 2× smarter than Veil. See benchmarks →</span>
+    <span class="news-arrow">›</span>
+  </a>
+</div>
+
+<!-- ── Main ──────────────────────────────────────────────────────────────── -->
+<main>
+
+  <!-- Features -->
+  <section>
+    <p class="section-tag">What it does</p>
+    <h2 class="section-heading">Everything you need to build faster</h2>
+    <p class="section-lead">Axion brings together the tools that actually matter for an AI coding agent.</p>
+
+    <div class="feature-grid">
+      <div class="feature-card">
+        <span class="feature-icon">⌨️</span>
+        <p class="feature-title">Terminal Agent</p>
+        <p class="feature-desc">Full agentic loop in your terminal. Edit files, run commands, fix bugs — Claude-Code style, open source.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">🖥️</span>
+        <p class="feature-title">Computer Use</p>
+        <p class="feature-desc">Vision + screenshot analysis lets the agent see and click your screen, not just your code.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">🌐</span>
+        <p class="feature-title">Chrome Extension</p>
+        <p class="feature-desc">Read pages, click elements, fill forms, and automate the browser — directly from the agent.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">💬</span>
+        <p class="feature-title">Discord Integration</p>
+        <p class="feature-desc">Run the agent as a Discord bot. Queue tasks, cancel runs, and get responses in any channel.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">🔌</span>
+        <p class="feature-title">MCP Servers</p>
+        <p class="feature-desc">First-party MCP servers for Blender and more. Plug in any tool with the Model Context Protocol.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">⚡</span>
+        <p class="feature-title">Multi-model</p>
+        <p class="feature-desc">Switch between Claude, Lumen, Veil, or any compatible model. Use the best tool for each task.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Ecosystem -->
+  <section>
+    <p class="section-tag">Ecosystem</p>
+    <h2 class="section-heading">Models built for Axion</h2>
+    <p class="section-lead">Axion Labs trains its own models optimized for agentic coding tasks.</p>
+
+    <div class="ecosystem">
+      <div class="eco-card">
+        <p class="eco-tag">Latest</p>
+        <p class="eco-name">Lumen 1.2</p>
+        <p class="eco-desc">Our most capable model. 2× higher task completion than Veil, with better multi-step reasoning and tool use.</p>
+        <a class="eco-link" href="/lumen-12">See benchmarks →</a>
+      </div>
+      <div class="eco-card">
+        <p class="eco-tag">Previous</p>
+        <p class="eco-name">Veil</p>
+        <p class="eco-desc">Fast and efficient. Still the best choice for lightweight tasks where speed matters more than depth.</p>
+        <a class="eco-link" href="/announcements">Release notes →</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quick start -->
+  <section>
+    <p class="section-tag">Quick start</p>
+    <h2 class="section-heading">Up and running in minutes</h2>
+    <p class="section-lead">Clone the repo, install dependencies, and start your first session.</p>
+
+    <div class="code-block">
+      <span class="comment"># Clone and install</span><br>
+      <span class="prompt">$ </span>git clone https://github.com/Ravikxx/axion<br>
+      <span class="prompt">$ </span>cd axion && npm install<br>
+      <br>
+      <span class="comment"># Set your API key and run</span><br>
+      <span class="prompt">$ </span>export ANTHROPIC_API_KEY=sk-...<br>
+      <span class="prompt">$ </span>npm start
+    </div>
+  </section>
+
+  <!-- Links -->
+  <section>
+    <p class="section-tag">Resources</p>
+    <h2 class="section-heading">Explore the project</h2>
+    <br>
+    <div class="link-row">
+      <a class="link-chip" href="https://github.com/Ravikxx/axion">⭐ GitHub Repository</a>
+      <a class="link-chip" href="/announcements">📣 Announcements</a>
+      <a class="link-chip" href="/lumen-12">🚀 Lumen 1.2 Release</a>
+      <a class="link-chip" href="/privacy">🔒 Privacy Policy</a>
+    </div>
+  </section>
+
+</main>
+
+<!-- ── Footer ─────────────────────────────────────────────────────────────── -->
+<footer>
+  <p>© 2025 Axion Labs · <a href="/privacy">Privacy</a> · <a href="https://github.com/Ravikxx/axion">GitHub</a></p>
+</footer>
+
+</body>
+</html>

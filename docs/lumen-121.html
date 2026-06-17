@@ -249,27 +249,50 @@
     }
     footer a { color: #8b7355; text-decoration: none; }
     footer a:hover { color: #c9b99a; }
+
+    .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+    @media (max-width: 640px) {
+      nav { padding: 0 16px; gap: 10px; }
+      nav a:not(.brand) { display: none; }
+
+      .hero { padding: 48px 20px 40px; }
+      .stat-row { gap: 24px; margin-top: 32px; padding-top: 32px; }
+      .stat-num { font-size: 30px; }
+
+      main { padding: 36px 16px 48px; }
+
+      .card { padding: 20px; }
+      .callout { padding: 16px 18px; }
+
+      .benchmark-table { font-size: 13px; }
+      .benchmark-table th, .benchmark-table td { padding: 10px 12px; }
+
+      .rec-grid { grid-template-columns: 1fr; }
+
+      .timeline { padding-left: 20px; }
+    }
   </style>
 </head>
 <body>
 
 <nav>
-  <a href="/" class="brand">◈ Axion</a>
+  <a href="/" class="brand">⚛ Axion</a>
   <a href="/announcements">Announcements</a>
   <a href="/lumen-12">Lumen 1.2</a>
   <a href="https://github.com/Ravikxx/axion">GitHub</a>
 </nav>
 
 <!-- Live Training Banner -->
-<div id="training-banner" style="display:none; background:#e8602c; color:#fff; padding:10px 32px;">
-  <div style="max-width:1100px; margin:0 auto; display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
-    <span style="font-size:12px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; white-space:nowrap;">⚡ Live Training</span>
-    <span id="tb-model" style="font-size:13px; font-weight:600; white-space:nowrap;"></span>
+<div id="training-banner" class="training-bar" style="display:none; background:#e8602c; color:#fff; padding:10px 32px;">
+  <div style="max-width:1100px; margin:0 auto; display:flex; align-items:center; gap:14px; flex-wrap:wrap; width:100%;">
+    <span style="font-size:12px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; flex-shrink:0;">⚡ Live Training</span>
+    <span id="tb-model" style="font-size:13px; font-weight:600; flex-shrink:0;"></span>
     <div style="flex:1; min-width:120px; background:rgba(255,255,255,0.3); border-radius:4px; height:5px;">
       <div id="tb-bar" style="background:#fff; height:5px; border-radius:4px; width:0%; transition:width 0.6s;"></div>
     </div>
-    <span id="tb-stats" style="font-size:12px; white-space:nowrap; opacity:0.9;"></span>
-    <span id="tb-eta" style="font-size:12px; white-space:nowrap; opacity:0.7;"></span>
+    <span id="tb-stats" style="font-size:12px; min-width:0; opacity:0.9;"></span>
+    <span id="tb-eta" style="font-size:12px; flex-shrink:0; opacity:0.7;"></span>
   </div>
 </div>
 <script>
@@ -347,6 +370,7 @@
     <div class="card-title">Full Comparison</div>
     <div class="card-sub">Lumen 1.2 vs Lumen 1.2.1</div>
     <br>
+    <div class="table-scroll">
     <table class="benchmark-table">
       <thead>
         <tr>
@@ -377,6 +401,7 @@
         </tr>
       </tbody>
     </table>
+    </div>
   </div>
 
   <div class="callout warn">
